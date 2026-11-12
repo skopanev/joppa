@@ -26,15 +26,14 @@ does not change the parent of a node.
   `a node is not its own fact` and `a relation holds at most 200 facts`.
 - A save that omits `color` or `facts` stores none, and a read gives them only when set.
 
-- `depends_on` makes the node wait until the target is green. Cycles are refused, also through
-  inherited parent dependencies. A new revision of the target asks for no review.
+- `depends_on` orders the work: the node comes after its target. Cycles are refused, also
+  through inherited parent dependencies: `dependency cycle`. The edge does not make the node
+  wait and does not change its tone. A new revision of the target asks for no review.
 - `related` records a reference between nodes. It blocks nothing, and cycles are permitted.
 - Every other key is a flow, such as a sequence of client screens. A flow allows cycles,
   blocks nothing, resets no criterion and counts for no status rule.
 
-A live depends_on target is satisfied when it is a green criterion, or when it has live
-criteria below it and each is green. An archived target does not make work wait. The status
-rule `links`, a typed field with `from: links` and the source reset count depends_on and
+The status rule `links`, a typed field with `from: links` and the source reset count depends_on and
 related edges, never a flow. `related_to` lists the depends_on, related and reference neighbours, never a flow neighbour.
 
 A save merges `relations` by key: a sent key replaces its `title`, `edges`, `color` and `facts`, `null` removes
@@ -109,8 +108,8 @@ the object has none. Each link has `workspace` (name or ID; the server stores th
 - A read gives `remote_links`, each with `status`: `access`, `present`, `current_revision`, `review_required` and `satisfied`.
 - `review_required` is true when the target has a newer revision, or is archived or absent. The object then has `remote_review_required: true`.
 - A new, changed or removed pin resets the criteria below the object. Save the links again with the new revision after the review.
-- A blocking link makes the work below the object wait until the target is ready: its pin is current, every criterion at and below it is green, and its own blocking links are ready.
-- Without read access, a status has `access: false` and null values, and a blocking link counts as not ready.
+- A blocking link is `satisfied` when its pin is current, every criterion at and below the target is green, and the blocking links of the target are satisfied too.
+- Without read access, a status has `access: false` and null values, and a blocking link is not satisfied.
 - An empty `links` list removes the remote links of the object.
 
 `workspace_key` in joppa_tree is the immutable ID of the workspace. joppa_tree gives it only

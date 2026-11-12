@@ -27,7 +27,8 @@ requires a new decision. Platforms come from the agreed AC and context; see
 Each Task has one parent permitted by the workspace schema and a technical contract.
 The recommended recipe places Tasks under ACs. Custom schemas can permit other parents and additional levels.
 `data.assignee` names the member or the agent alias that does the Task.
-A Task waits for its depends_on targets, the same as any other node.
+A Task can have depends_on edges, the same as any other node. An edge orders the work; it does
+not make the Task wait or change its tone.
 `data.commit` records the Git sha of the finished work. `archive_object` ends the Task.
 
 A Task records work evidence. It never supplies a passing criterion check.
@@ -71,7 +72,7 @@ Each REQ and AC passes three gates before code changes:
 
 1. **11111.** The Reviewer agent scores the node against five rules: Grounded, Atomic,
    Unambiguous, Minimal and Verifiable. Each 0 gets a fix: STRIP, SPLIT, ASK_OPTIONS or REWRITE.
-2. **Reuse (R).** The Reviewer agent searches the codebase and the Tech root for ready shared
+2. **Reuse (R).** The Reviewer agent searches the codebase and the Tech root for existing shared
    types, packages, libraries, helpers, modules and contracts. It uses the code graph index
    (codebase-memory, CBM) when it is connected. The Writer agent reuses them and writes no
    duplicates.

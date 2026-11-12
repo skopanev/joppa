@@ -12,8 +12,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   "revision": 3,
   "parent": "ac:a",
   "data": {"title": "...", "owner": "owner", "body": "...", "note": null, "projects": []},
-  "status": {"label": "Waits for a dependency", "tone": "yellow"},
-  "work_ready": false,
+  "status": {"label": "Current document", "tone": "blue"},
   "comments_count": 30,
   "files_count": 2,
   "relations": {
@@ -57,7 +56,6 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   differs from the address.
 - `verification` shows only the `pass` or `fail` of a finished run.
 - `process.status` of a Note shows only when it differs from `data.status`.
-- `work_ready` shows only when it is `false`.
 - An object without remote links has no `remote_links` or `remote_review_required`. Read
   them as `[]` and `false`. Its `remote_links_revision` shows only when it is above 0: send
   a missing one as 0 with `set_remote_links`.
@@ -137,5 +135,5 @@ addresses, or when the request named an alias. Name `revision` to get the revisi
   `contract`.
 - `fields` reads the current revision, or the revision that `revision` names. Then the
   document fields and `revision` come from that revision, and the state fields (`status`,
-  `signal`, `work_ready`, `process`, `children`) stay current. With
+  `signal`, `process`, `children`) stay current. With
   `history` it is refused: `fields reads one revision; history gives the revision headers`.

@@ -121,6 +121,10 @@ Set `fields` on a type to give a data field its type:
   `size is a number`, `tags is a list of texts`, `note is a text`. A null or an absent field has no value.
 - `set_tree_schema` refuses a rule that a present object breaks.
 - The board drop-down of a typed enum field in `filters` offers each of its values.
+- `board: true` shows the field on the web card of an object. The card does not show a typed
+  field without it. `board` is true or false: `board is true or false, not "yes"`.
+- The MCP tree does not give `board`. A `set_tree_schema` over MCP that omits `board` on a
+  field keeps the stored value of that field of that type. `board: false` clears it.
 
 ## Computed fields
 
@@ -274,7 +278,7 @@ A result field has no `board` or `applies`: `set_tree_schema` refuses them with
 
 - `target` names a configured type, or `"*"` for any type. A wildcard needs full addresses.
 - `multiple: true` takes an array of addresses. `required: true` refuses a missing or empty value.
-- Duplicates and missing targets are refused. References change no parent, no readiness and no tone.
+- Duplicates and missing targets are refused. References change no parent and no tone.
 - `from: "children"` makes a computed reference. Its value is the sorted union of the
   addresses of the same field in the present children, each address once. A child gives its
   own or its computed value, so the addresses climb from level to level. The server sets the

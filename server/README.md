@@ -78,6 +78,7 @@ stays down until the migration ends.
 A failed application health check restores the previous binary when available;
 database migrations and configuration changes are not rolled back.
 After migration 064 (relations only), the previous binary refuses each save of a stored node with "object history changed", so the rollback is the pre-deploy dump.
+After migration 067 (no work_ready), the previous binary reads the dropped column joppa.objects.work_ready and fails, so the rollback is the pre-deploy dump. Migration 067 replays no journal. The status projection version 13 makes the catch-up at serve start rebuild the status rows of each workspace.
 After migration 063 (the tone blue), the previous binary cannot replay a blue status
 list and has no `--dot-blue`, so the rollback is the pre-deploy dump. Migrations 063 and 064 replay no
 journal: put their measured time on a copy of production in the deploy request. The primary

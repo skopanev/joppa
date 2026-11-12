@@ -6,6 +6,7 @@ Reads:
 - Read many objects in one call. Send 2 to 25 addresses "a,b,c" with fields, or parent with depth and fields, for example {"parent":"requirement:r","depth":2,"fields":["title","body","status"]}. Do not read one object for each call in a loop.
 - fields keeps the named keys on a list and on an address read.
 - Each list gives items, total and next_cursor, with at most 25 items in a page. Send next_cursor as cursor to read the next page.
+- To count nodes, send count: true or group_by (1 to 3 keys) to joppa_objects. Do not page through a list to count it.
 - Use joppa_search to find related work by words. Read one historical revision only when needed.
 - Read joppa_help with op for the fields of one operation, with section process for the work rules and with section writing for the text rules.
 

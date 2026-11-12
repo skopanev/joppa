@@ -91,7 +91,8 @@ A flow edge does not count.
 
 - A node with no counted child or link is orange: a criterion without a test node is orange.
 - A child with `status: "none"`, for example a Task, does not count.
-- A node that waits for a depends_on target is at least yellow.
+- A depends_on edge does not make its source wait or turn yellow. Yellow marks only an
+  unprocessed Inbox input.
 - An archived node is purple and does not count.
 
 ## Changes

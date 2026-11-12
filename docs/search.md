@@ -11,7 +11,7 @@ A copied public ID or an address as `query` gives only that object, with `exact_
 ```
 
 `workspace` and `query` are required. The [node filters](read-contract.md#node-filters)
-of `joppa_objects` (`parent`, `depth`, `kind`, `status`, `owner`, `assignee`, `ready`,
+of `joppa_objects` (`parent`, `depth`, `kind`, `status`, `owner`, `assignee`,
 `data`) narrow the results, `total` and the cursor. The limit is 1–50,
 default 10. A query is 1–2,000 characters. A copied system ID, also an old prefix
 alias, matches directly and ranks first.

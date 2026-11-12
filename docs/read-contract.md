@@ -103,18 +103,19 @@ Request:
 
 ```json
 {"workspace": "w", "kind": "ac", "parent": "*",
- "fields": ["revision", "work_ready", "process.verification"]}
+ "fields": ["revision", "present", "process.verification"]}
 ```
 
 Reply item: the address and each named path, also when its value is empty.
 
 ```json
-{"address": "ac:a", "revision": 3, "work_ready": true, "process.verification": null}
+{"address": "ac:a", "revision": 3, "present": true, "process.verification": null}
 ```
 
 List fields: `address`, `data`, `kind`, `id`, `revision`, `parent`, `title`, `owner`,
-`work_ready`, `at`, `body`, `signal`, `present`, `note_status`, `status`, `process`, `children`,
-`child_counts`, `relations`.
+`at`, `body`, `signal`, `present`, `note_status`, `status`, `process`, `children`,
+`child_counts`, `relations`. The removed keys `work_ready` and `waits_for` are refused:
+`work_ready was removed`.
 
 `child_counts` comes from the status projection of the last write. It has one entry for each
 type of the present direct children that have a tone, in the order of the type index:
@@ -152,8 +153,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `kind` | Nodes of one type or of a list of types. |
 | `status` | Nodes with one tone or a tone of a list: `red`, `purple`, `yellow`, `orange`, `blue`, `green`. The tone is the `status` of a list item. The older name of `blue` reads as `blue`. `purple` marks archived nodes: a list read with `purple` also keeps the current archived nodes, and the walk below `parent` also passes archived nodes. `joppa_search` reads them only with `all_versions`. |
 | `owner` | Nodes whose `data.owner` is this member ID. |
-| `assignee` | Nodes whose `data.assignee` is this value: a member ID or an agent alias. Any node can have `data.assignee`. |
-| `ready` | `false`: nodes that wait for a `depends_on` target that is not green or whose contract revision changed (`waits_for`). A node of a type with the status rule `children` or `links` is also `false` when one of its counted children or linking objects is not ready. The counted ones are the same as for the status tone. `true`: every other node. |
+| `assignee` | Nodes whose `data.assignee` is this value: a member ID or an agent alias. Any node can have `data.assignee`. `""` keeps the nodes with no assignee: `data.assignee` is null, absent or `""`. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. A value of a [filter dimension](schema.md#filter-dimensions), such as `{"env": "dev"}`, keeps the nodes that apply to it and gives the tones of that value. |
 
 ```json
@@ -166,18 +166,48 @@ take the same filters (`src/node_filter.rs`). All filters must match.
   `{"parent": "requirement:r", "status": "purple"}` gives the archived nodes below the requirement,
   `["green", "purple"]` gives the green present nodes and the archived nodes, and each archived
   item gives `present: false` when `fields` names it.
-- HTTP takes `kind` and `status` comma-separated, `ready` as `true` or `false` and `data` as
-  JSON text. A board link with these query keys, such as `/?workspace=w&assignee=user-1&ready=false`,
-  opens the board with that list. The board pickers `owner`, `assignee`, `status` and `ready` show
+- HTTP takes `kind` and `status` comma-separated and `data` as JSON text. `?assignee=` keeps
+  the nodes with no assignee. A board link with these query keys, such as
+  `/?workspace=w&assignee=user-1&status=red`, opens the board with that list. The board pickers
+  `owner`, `assignee` and `status` show
   the link values, and a picker change writes its value to the link. The board filters and the
   board search read every level of the tree.
 - A bad value is refused: `unknown status gray; use red, purple, yellow, orange, blue, green`,
   `status purple marks archived nodes; find them with joppa_objects, or with joppa_search and all_versions`
   (a search without `all_versions`),
-  `depth must be an integer from 1 to 100`, `ready must be a boolean`, `data filter must be an object`.
+  `depth must be an integer from 1 to 100`, `data filter must be an object`.
+- The removed filter `ready` is refused: `the ready filter was removed`.
 - Indexes serve `owner`, `assignee`, the tone and `data` (migrations 039, 045 and 046).
 - With `address` the filters are refused: `address cannot be combined with list filters`.
-- A read with `work_filter` is refused: `work_filter was removed; use the node filters, for example kind and ready`.
+- A read with `work_filter` is refused: `work_filter was removed; use the node filters, for example kind and assignee`.
+
+## Counts
+
+A list read of `joppa_objects` or HTTP `/objects` gives counts instead of items
+(`src/node_counts.rs`). The counts take the node filters and count the nodes of the same list:
+without a filter, the roots. Send `parent: "*"` to count every level.
+
+- `count: true` gives `{"total": N}`.
+- `group_by` takes 1 to 3 keys and gives `{"total": N, "groups": [{<key>: value, ..., "count": C}]}`.
+  A key is `kind`, `status` (the status tone), `owner`, `assignee`, or a data field as `<field>`
+  or `data.<field>`. A data field reads the computed fields too. Each group names its values
+  with the keys as sent.
+- A missing value groups as null. An assignee `""` groups as null.
+- The groups come in the order of the key values, ascending, with null last.
+- HTTP takes `?count=true` and `?group_by=kind,status`.
+
+```json
+{"workspace": "w", "parent": "*", "kind": "ac", "group_by": ["status", "assignee"]}
+{"total": 9, "groups": [{"status": "blue", "assignee": "alex", "count": 2},
+  {"status": "green", "assignee": null, "count": 7}]}
+```
+
+These parameters are refused with count or group_by, and the refusal names them:
+`address`, `cursor`, `limit`, `fields`, `relations_of`, `in_relation`, `related_to`,
+`note_status`, `revision`, `history`, `comments_cursor`, `direction` and `relation`. For example:
+`count cannot be combined with limit`. `count` with `group_by` is refused, because `group_by`
+also gives the total. `group_by` with 0 or more than 3 keys is refused:
+`group_by takes 1 to 3 keys, not 4`.
 
 ## Reads by address
 
@@ -194,8 +224,8 @@ and every red test with `{"workspace": "w", "kind": "test", "status": "red"}`. T
 
 ## Other read tools
 
-Read Tasks with the node filters, for example `{"kind":"task","assignee":"alex","ready":true}`.
-A call of `joppa_tasks` is refused with `joppa_tasks was removed; use joppa_objects with kind task, for example {"kind":"task","assignee":"alex","ready":true}`.
+Read Tasks with the node filters, for example `{"kind":"task","assignee":"alex"}`.
+A call of `joppa_tasks` is refused with `joppa_tasks was removed; use joppa_objects with kind task, for example {"kind":"task","assignee":"alex"}`.
 
 `joppa_history` and `joppa_search` lose the empty keys, `item_id` and the echo of the
 request:

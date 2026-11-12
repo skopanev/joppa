@@ -8,7 +8,7 @@
 //   clear remove it. An unknown node picks nothing and stays in the link.
 // - A linked node in a wide flow opens near the node (focus). A small flow opens whole.
 // - The board reads the members of the relation (in_relation) in pages of 25 and draws them
-//   (flow-draw.js). A depends_on arrow goes from the blocker to the node that waits. The arrow
+//   (flow-draw.js). A depends_on arrow goes from the target to the node that depends on it. The arrow
 //   of every other relation goes from the node to its target.
 // - Then the board reads the facts of the steps (flow-facts.js). The dots and the card show
 //   after every read ends. A dot takes the worst tone of its step and the facts.
@@ -117,7 +117,7 @@ function badges(node,key,registry,titles){
   return Object.keys(node.relations||{}).filter(k=>k!==key&&registry[k]&&!registry[k].system).sort((a,b)=>a<b?-1:a>b?1:0).map(k=>({key:k,title:titles[k]||k}));
 }
 // The edges of the relation between two members, in the stored order of each node. A
-// depends_on edge points from its target, the blocker, to the node that waits.
+// depends_on edge points from its target to the node that depends on it.
 function flowEdges(nodes,key){
   const list=[];
   for(const node of nodes.values())for(const edge of node.relations?.[key]?.edges||[]){

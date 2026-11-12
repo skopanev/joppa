@@ -8,6 +8,7 @@ Read [objects](objects.md) before you edit documents. Write new text by the
 - MCP: `POST /mcp` over HTTPS. The actor comes from OAuth or a private service credential of the server. An agent names itself with `alias`.
 - Commands: `POST /api/workspaces/{workspace}/commands` with `{"request_id":"unique-id","command":{...}}` and `Authorization: Bearer <token>`.
 - Reads: `GET /api/workspaces`, `GET /api/workspaces/{workspace}` and the routes `board`, `objects`, `search`, `history`, `tree` and `dependencies` under it.
+- Counts: `GET /api/workspaces/{workspace}/objects?count=true` gives `{"total": N}`, and `?group_by=kind,status` gives `{"total": N, "groups": [...]}`, with the node filters. See [counts](read-contract.md#counts).
 - Files: `POST /api/workspaces/{workspace}/blobs` takes a raw body of 50 MiB at most and answers `{hash,size}`.
 - Upload links: `PUT /api/uploads/{token}` takes the raw bytes of one `joppa_attach` call with `upload: true`. The signed link is the credential, so the request needs no token or cookie. The server checks the signature, the lifetime, the access and the size in this order. Then it stores the bytes and answers with the `joppa_attach` reply. The errors are:
   - 403 `upload link is not valid`, 410 `upload link expired` and 404 `Workspace not found`.
@@ -100,7 +101,7 @@ the `data` node filter. Any other view in the link opens the tree.
   the first view. The view reads the nodes in pages of 25 with
   `GET /api/workspaces/{workspace}/objects?in_relation=KEY&fields=title,signal,relations&limit=25`.
   - A node is in the column of the longest path to it. A depends_on arrow goes from the
-    blocker to the node that waits. The arrow of any other relation goes from the node to its
+    target to the node that depends on it. The arrow of any other relation goes from the node to its
     target. An edge back to an earlier node of a cycle is an arc over its nodes. An edge over
     more than one column goes through a free row of each column between. Four barycenter
     sweeps order the rows of each column, so fewer edges cross.

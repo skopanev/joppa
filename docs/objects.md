@@ -138,7 +138,7 @@ Score five rules, in the order G A U M V, then apply gate 6, Reuse. Each rule is
    dependent on an unconfirmed external rule, or not deterministic. On 0: REWRITE and name
    the missing trigger or outcome.
 
-6. Reuse (R). 1: the node and its implementation plan use the ready shared types, packages,
+6. Reuse (R). 1: the node and its implementation plan use the existing shared types, packages,
    libraries, helpers, modules and contracts of the codebase and the Tech root. 0: the plan
    duplicates an existing mechanism, or the search was not done. Search with the code graph
    index (codebase-memory, CBM: `search_graph`, `search_code` and `SIMILAR_TO`) when it is
@@ -169,7 +169,7 @@ A Task has no purpose: `save_object` refuses `data.purpose` with
   A list item of `joppa_objects` and a board row show it.
 - `data.commit` gives the Git sha of the finished work.
 - A typed field of the schema, such as `data.stage`, gives the state of the Task. `archive_object` ends the Task.
-- Read Tasks with the node filters of `joppa_objects`, for example `{"kind":"task","assignee":"alex","ready":true}`.
+- Read Tasks with the node filters of `joppa_objects`, for example `{"kind":"task","assignee":"alex"}`. `"assignee": ""` gives the Tasks with no assignee.
 
 ## Archive and restore
 
