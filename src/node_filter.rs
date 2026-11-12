@@ -200,3 +200,7 @@ fn list(a: &Value, name: &str) -> Result<Option<Vec<String>>> {
     );
     Ok(Some(values))
 }
+
+#[cfg(test)]
+#[path = "node_filter_tests.rs"]
+mod tests;

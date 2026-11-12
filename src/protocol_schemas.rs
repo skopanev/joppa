@@ -30,7 +30,8 @@ fn node_filters(mut schema: Value, full: bool) -> Value {
         "data": {"type":"object","description":"containment filter on data, e.g. {\"stage\":\"done\"}"},
     });
     for (name, value) in filters.as_object().into_iter().flatten() {
-        schema[name] = if full || name == "status" {
+        // The search repeats the texts of status and assignee: they name values to send.
+        schema[name] = if full || name == "status" || name == "assignee" {
             value.clone()
         } else {
             json!({"type":value["type"],"description":"as in joppa_objects"})
