@@ -129,18 +129,12 @@ async fn a_rejected_text_stops_after_five_attempts_and_blocks_no_other() -> Resu
         };
         ensure!(ok, "{title}: attempts {attempts}, vector {vector}");
     }
-    // The texts that keep failing leave the shared queue, so a later test drains only its own.
-    let conn = pool.get().await?;
-    conn.execute(
-        "DELETE FROM joppa.search_documents WHERE workspace=$1",
-        &[&ws],
-    )
-    .await?;
-    conn.execute(
-        "DELETE FROM joppa.search_revisions WHERE workspace=$1",
-        &[&ws],
-    )
-    .await?;
+    // The texts that keep failing leave the shared database with their workspace, so a later
+    // server does not project them again and a later test drains only its own queue.
+    pool.get()
+        .await?
+        .execute("SELECT joppa.purge_workspace($1)", &[&ws])
+        .await?;
     Ok(())
 }
 
