@@ -64,9 +64,24 @@ async function fixture(types, statuses) {
   await context.addCookies([{name: 'joppa_session', value: live.cookie, url: live.root}]);
   const page = await context.newPage(), pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
+  // Each workspace that a test creates for alex: close deletes it, so the next file of the
+  // shared browser database opens the same workspace list.
+  const created = [];
+  const track = id => { created.push(id); return id; };
+  // alex deletes the workspace from the signed-in page, as in Settings.
+  const drop = async id => {
+    const [status, text] = await page.evaluate(async id => {
+      const response = await fetch('/api/workspaces/' + encodeURIComponent(id) + '/delete', {method: 'POST'});
+      return [response.status, await response.text()];
+    }, id);
+    assert.equal(status, 200, text);
+  };
   const close = async () => {
+    let dropped;
+    for (const id of created.splice(0)) { try { await drop(id); } catch (error) { dropped ??= error; } }
     try { await context.close(); const exit = once(child, 'exit'); child.stdin.end(); assert.equal((await exit)[0], 0, errors); }
     finally { assert.deepEqual(pageErrors, []); }
+    if (dropped) throw dropped;
   };
   try {
     await command({op: 'member', id: 'alex', role: 'human'}, live.owner);
@@ -74,7 +89,7 @@ async function fixture(types, statuses) {
     // The fixture creator sets the tree schema.
     await command({op: 'set_tree_schema', revision: tree.current_revision, types, ...(statuses ? {statuses} : {}), reason: 'Configure the browser tree'}, live.owner);
   } catch (error) { await close(); throw error; }
-  return {live, page, api, command, mcp, save, addTest, close};
+  return {live, page, api, command, mcp, save, addTest, track, close};
 }
 
 /// The test type under the criterion types `parents`: a schema that replaces the types map needs it.

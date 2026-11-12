@@ -19,6 +19,7 @@ test('hidden workspace board: the drop-down leaves it out and its direct link op
       const response = await fetch('/api/workspaces', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title: 'Hidden plans'})});
       return (await response.json()).id;
     });
+    f.track(h);
     const response = await fetch(f.live.root + '/api/workspaces/' + h + '/commands', {method: 'POST',
       headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},
       body: JSON.stringify({request_id: crypto.randomUUID(), command: {op: 'update_workspace', hidden: true}})});

@@ -31,6 +31,7 @@ test('idxkripi blue-circle: a criterion without results has a blue circle in bot
       const response = await fetch('/api/workspaces', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title: 'Bound'})});
       return (await response.json()).id;
     });
+    f.track(v);
     await f.command({op: 'save_object', kind: 'component', id: 'v', revision: 0, parent: 'requirement:r',
       data: {title: 'Bound workspace', owner: 'alex', workspace: v}, reason: 'Bind V'}, f.live.alex);
     const read = await f.api('/objects?address=ac%3Aa');

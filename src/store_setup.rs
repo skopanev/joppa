@@ -16,7 +16,7 @@ pub fn pool(url: &str) -> Result<Pool> {
 pub async fn migrate(pool: &Pool) -> Result<()> {
     for attempt in 1.. {
         match migrate_once(pool).await {
-            Err(e) if attempt < 3 && is_deadlock(&e) => {
+            Err(e) if attempt < 6 && is_deadlock(&e) => {
                 // Visible on purpose: a retried migration must show up in the logs.
                 eprintln!("joppa: migration attempt {attempt} hit a deadlock, retrying: {e:#}");
                 tokio::time::sleep(std::time::Duration::from_millis(100 * attempt)).await;

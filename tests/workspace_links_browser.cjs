@@ -16,6 +16,7 @@ test('node-workspace-ac7 board: a node shows its child workspace and its links t
       const response = await fetch('/api/workspaces', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({title: 'Backend'})});
       return (await response.json()).id;
     });
+    f.track(c);
     const inC = async (command) => {
       const response = await fetch(f.live.root + '/api/workspaces/' + c + '/commands', {method: 'POST',
         headers: {'Authorization': 'Bearer ' + f.live.alex, 'Content-Type': 'application/json'},

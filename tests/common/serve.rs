@@ -44,7 +44,8 @@ pub async fn start_with(
             .stderr(Stdio::null())
             .spawn()?,
     );
-    for _ in 0..100 {
+    // A loaded test worker can need many seconds for the migrations and the board catch-up.
+    for _ in 0..600 {
         if reqwest::get(format!("http://127.0.0.1:{port}/health"))
             .await
             .is_ok_and(|r| r.status().is_success())

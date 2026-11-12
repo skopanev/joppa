@@ -113,8 +113,9 @@ async fn a_write_wakes_the_indexer_and_the_same_text_keeps_its_vector() -> Resul
     let ws = workspace(&pool).await?;
     let (fake, endpoint) = world::provider().await?;
     let server = world::serve(&url, &["owner", "bot"], &endpoint).await?;
-    // The start drain ends, and then the indexer is idle.
-    settled(&pool, None, Duration::from_secs(30)).await?;
+    // The start drain ends, and then the indexer is idle. The shared database of a worker can
+    // hold many rows of earlier tests.
+    settled(&pool, None, Duration::from_secs(120)).await?;
     tokio::time::sleep(Duration::from_millis(500)).await;
     let before = fake.calls.load(Ordering::SeqCst);
     save(&server.root, &ws, "wake", "Invoice reminders", 0).await?;

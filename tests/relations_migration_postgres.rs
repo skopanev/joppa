@@ -85,7 +85,8 @@ async fn migrated(w: &World) -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn migration_062_moves_the_stored_links_without_a_replay() -> Result<()> {
     let mut w = relations_world::world(&[]).await?;
-    for n in 1..=30 {
+    // Each linked target exists before its source event in the journal: n01 links n02..n05.
+    for n in (1..=11).rev().chain(12..=30) {
         saved(&w, &doc(n), 0, json!({})).await?;
     }
     // doc:n30 has a remote link to workspace K.

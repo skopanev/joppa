@@ -35,10 +35,15 @@ test('hide-from-my-list: each member hides a workspace in Settings for the own d
     page.on('pageerror', error => errors.push(error.message));
 
     // The workspace IDs of the board drop-down on / of one page.
+    // The page first shows the stored workspace, so wait until it shows each listed one.
     const dropDown = async p => {
+      const listed = p.waitForResponse(r => new URL(r.url()).pathname === '/api/workspaces' && r.request().method() === 'GET',
+        {timeout: 15000});
       assert.equal((await p.goto(root + '/')).status(), 200);
-      await p.waitForFunction(() => { const s = document.getElementById('workspaces'); return s && s.options.length > 0 && s.value; },
-        null, {timeout: 15000});
+      const body = await (await listed).json();
+      const ids = (body.items || body).map(item => item.id);
+      await p.waitForFunction(ids => { const s = document.getElementById('workspaces');
+        return s && s.value && ids.every(id => [...s.options].some(o => o.value === id)); }, ids, {timeout: 15000});
       return p.locator('#workspaces').evaluate(s => [...s.options].map(o => o.value));
     };
     // Wait until the plain web list of the member lists W (`listed`) or leaves it out.
