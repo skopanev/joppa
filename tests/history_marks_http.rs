@@ -58,7 +58,7 @@ async fn one_mark_closes_up_to_25_positions() -> Result<()> {
     let mut p = Vec::new();
     for i in 1..=12 {
         let save = json!({"op":"save_object","kind":"requirement","id":format!("e{i:02}"),
-            "revision":0,"parent":null,"data":{"title":"E","owner":"owner"},"reason":"Entry"});
+            "revision":0,"parent":null,"data":{"title":"E","owner":"owner","body":"Rule"},"reason":"Entry"});
         let reply = w.command(&w.bot, save).await?.map_err(anyhow::Error::msg)?;
         p.push(reply["position"].as_u64().context("position")?);
     }

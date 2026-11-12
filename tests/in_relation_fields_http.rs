@@ -48,12 +48,16 @@ async fn in_relation_reads_one_relation_key_with_fields() -> Result<()> {
     let page = page.map_err(anyhow::Error::msg)?;
     let items = page["items"].as_array().cloned().unwrap_or_default();
     let found: Vec<Value> = items.iter().map(|i| i["address"].clone()).collect();
-    ensure!(found == [json!("doc:n1"), json!("doc:n2")], "{page}");
-    for (item, to) in items.iter().zip(["doc:n2", "doc:n3"]) {
+    // The read gives the holders N1 and N2 and the edge target N3, which holds no swap.
+    let wanted = [json!("doc:n1"), json!("doc:n2"), json!("doc:n3")];
+    ensure!(found == wanted, "{page}");
+    for (item, to) in items.iter().zip([Some("doc:n2"), Some("doc:n3"), None]) {
+        let swap: Vec<&str> = to.into_iter().collect();
+        let relation_keys: Vec<&str> = to.map(|_| "swap").into_iter().collect();
         ensure!(
             keys(item) == ["address", "relations", "title"]
-                && keys(&item["relations"]) == ["swap"]
-                && targets(item, "swap") == [to],
+                && keys(&item["relations"]) == relation_keys
+                && targets(item, "swap") == swap,
             "{item}"
         );
     }

@@ -42,7 +42,8 @@ pub fn relation_keys(fields: &[String]) -> Vec<String> {
 }
 
 /// One item of an MCP member read with `fields`: each `relations.<path>` key moves into
-/// `relations`, so `relations.swap` gives `{relations: {swap: ...}}` (ac:ig3uv35d).
+/// `relations`, so `relations.swap` gives `{relations: {swap: ...}}` (ac:ig3uv35d). A node
+/// without the named key, such as an edge target, gives `relations: {}`.
 pub fn nest(item: &mut Value) {
     let Some(map) = item.as_object_mut() else {
         return;
@@ -56,6 +57,9 @@ pub fn nest(item: &mut Value) {
         let value = map.remove(&path).unwrap_or_default();
         let segments: Vec<&str> = path.split('.').collect();
         let relations = map.entry("relations").or_insert_with(|| json!({}));
+        if segments.len() == 2 && value.is_null() {
+            continue;
+        }
         put(relations, &segments[1..], value);
     }
 }
@@ -88,6 +92,9 @@ mod nest_tests {
             item,
             json!({"address":"n:1","title":"N1","relations":{"swap":{"edges":[{"to":"n:2"}]}}})
         );
+        let mut target = json!({"address":"n:3","title":"N3","relations.swap":null});
+        nest(&mut target);
+        assert_eq!(target, json!({"address":"n:3","title":"N3","relations":{}}));
         let mut whole = json!({"address":"n:3","relations":{"pay":{"edges":[]}}});
         nest(&mut whole);
         assert_eq!(
