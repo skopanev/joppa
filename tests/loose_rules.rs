@@ -15,7 +15,7 @@ fn internal(w: &mut World, op: &str) {
     w.position += 1;
 }
 
-/// A current workspace: every migration ran, and both criteria are ready.
+/// A current workspace: every migration ran, and both criteria are present.
 fn current() -> World {
     let mut w = World::new();
     w.confirm();

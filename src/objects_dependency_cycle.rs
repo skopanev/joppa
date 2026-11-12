@@ -1,13 +1,13 @@
-//! Part of `objects`: the wait cycle check of depends_on edges. A Task can depend on a Task
+//! Part of `objects`: the cycle check of depends_on edges. A Task can depend on a Task
 //! under any requirement; only a dependency cycle is refused.
 use super::*;
 
-/// A live save refuses a new depends_on edge from S to T when T, or a node below T, waits on
-/// S, on an ancestor of S or on a node below S. A node waits on the depends_on targets of
-/// itself and of its ancestors, and a target needs itself and each live node below it.
-/// The rule is the same for every type of node, as in `dependencies::Graph`. Replay accepts
-/// the edges that are already stored.
-pub(crate) fn validate_wait_cycle(
+/// A live save refuses a new depends_on edge from S to T when T, or a node below T, depends
+/// on S, on an ancestor of S or on a node below S. A node depends on the depends_on targets of
+/// itself and of its ancestors, and a target covers itself and each live node below it.
+/// The rule is the same for every type of node. Replay accepts the edges that are already
+/// stored.
+pub(crate) fn validate_dependency_cycle(
     w: &Workspace,
     key: &str,
     parent: Option<&str>,
@@ -85,8 +85,8 @@ pub(crate) fn validate_wait_cycle(
         nodes.insert(target);
         for node in nodes {
             if visited.insert(node.clone()) {
-                for waiting in std::iter::once(node.clone()).chain(ancestors(&node)) {
-                    needed.extend(targets(&waiting));
+                for dependent in std::iter::once(node.clone()).chain(ancestors(&node)) {
+                    needed.extend(targets(&dependent));
                 }
             }
         }

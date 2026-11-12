@@ -130,7 +130,7 @@ pub(crate) fn workflow_command(
             let ac_key = process_key(w, kind, id, "ac");
             // A criterion may have its own owner without a decision of that owner. After
             // migrate_decision_required, an unchanged owner keeps its stored record, so the
-            // criterion keeps its readiness.
+            // criterion keeps its status.
             let stored = r.acs.iter().find(|a| a.id == ac_key).map(|a| &a.owner);
             let owner = match stored {
                 Some(stored)

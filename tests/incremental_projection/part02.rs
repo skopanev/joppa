@@ -97,7 +97,7 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
                 "checks":[{"id":"t-ios[ios]","ac":"ios","method":"automated","expected":["access survives"]},
                           {"id":"t-key[key]","ac":"key","method":"automated","expected":["read and verify only"]}]}),
         ),
-        // Evidence only: no document changes at all, yet readiness moves.
+        // Evidence only: no document changes at all, yet the status moves.
         (
             "result ios",
             json!({"op":"result","req":"r","revision":1,"run":"r1",
@@ -113,7 +113,7 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
         ("finish", json!({"op":"finish","req":"r","revision":1,"run":"r1"})),
         // A depends_on edge to a criterion.
         (
-            "note waits for a criterion",
+            "note depends on a criterion",
             json!({"op":"save_object","kind":"note","id":"waiting","revision":0,"parent":null,
                 "data":{"title":"Waiting input","owner":"owner","body":"Needs the criterion"},
                 "relations":{"depends_on":{"edges":[{"to":"ac:key","revision":1}]}},
@@ -124,7 +124,7 @@ fn sequence(seed: usize) -> Vec<(&'static str, Value)> {
             json!({"op":"decide_note","target":"note:top","revision":1,"outcome":"changed_spec",
                 "reason":"Applied to the tree","links":["requirement:r"]}),
         ),
-        // A new revision resets readiness.
+        // A new revision resets the criteria.
         ("revise", revision(1)),
     ]);
     steps

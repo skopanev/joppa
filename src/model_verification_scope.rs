@@ -102,7 +102,7 @@ pub struct Task {
     /// An unassigned task becomes in progress only after an atomic claim.
     pub assignee: Option<String>,
     pub done: Option<String>,
-    /// The git sha where the Task is ready, from complete_task.
+    /// The git sha where the Task is done, from complete_task.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
     #[serde(default)]
@@ -119,7 +119,7 @@ pub struct Task {
     pub origin_revision: u32,
     #[serde(default)]
     pub retired: Option<String>,
-    /// A failed Task waits for planning; claims refuse it until planning clears it.
+    /// A failed Task of an older journal: claims refuse it until planning clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocked: Option<TaskBlock>,
 }

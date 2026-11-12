@@ -90,7 +90,7 @@ fn each_criterion_takes_one_consumer_and_keeps_its_status() {
     let key_now = w.state.objects["ac:key"].current();
     assert_eq!(key_now.data["consumer"], "customer");
     assert_eq!(key_now.revision, key + 1);
-    // The text, the tests and the readiness do not change, so no criterion resets.
+    // The text and the tests do not change, so no criterion resets.
     assert_eq!(w.state.criterion_boundaries, boundaries);
     // A second migration changes nothing.
     let state = serde_json::to_value(&w.state).unwrap();

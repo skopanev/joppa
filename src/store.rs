@@ -71,7 +71,6 @@ use migrations::ensure_notes;
 /// journal: time `joppa migrate` on a copy of production first (server/README.md). A change of
 /// the first_view shape needs no raise: a targeted SQL pass, such as migration 061, moves it.
 pub(super) const BOARD_PROJECTION_VERSION: &str = "22";
-pub(super) const READINESS_METADATA_VERSION: &str = "2";
 
 #[derive(Serialize)]
 pub struct Event {

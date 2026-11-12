@@ -9,8 +9,8 @@ async fn an_archived_capability_leaves_the_list_and_its_archived_tasks_stay_arch
     let seed: Operation = serde_json::from_value(seed)?;
     store::execute(&w.pool, &w.ws, "owner", "spent", &seed).await?;
     w.requirement("spent", "spent", "Finished rule", "Scope", &[("spent-a", "Criterion A")]).await?;
-    let done = ready_task(&w, "spent-done", "spent-a").await?;
-    let dropped = ready_task(&w, "spent-retired", "spent-a").await?;
+    let done = new_task(&w, "spent-done", "spent-a").await?;
+    let dropped = new_task(&w, "spent-retired", "spent-a").await?;
     for (task, reason) in [(&done, "Implemented the contract"), (&dropped, "The owner no longer needs this work")] {
         w.command(json!({"op":"archive_object","target":task,"revision":1,"reason":reason})).await?;
     }

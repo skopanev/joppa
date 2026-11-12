@@ -36,7 +36,7 @@ test('flow-layout: the flow draws left to right with the arrow of the relation',
     for (const n of (await snap(f)).nodes) {
       assert.ok(Math.hypot(n.dx - at[n.address].dx, n.dy - at[n.address].dy) < 0.5, n.address + ' moved after 2 s');
     }
-    // depends_on draws the arrow from the blocker A to the node B that waits.
+    // depends_on draws the arrow from the target A to the node B that depends on it.
     await f.page.getByLabel('Relation', {exact: true}).selectOption('depends_on');
     await f.page.waitForFunction(() => document.querySelectorAll('.flow-node').length === 2);
     const depends = await snap(f);

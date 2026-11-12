@@ -29,10 +29,7 @@ pub fn system() -> BTreeMap<String, RelationType> {
     BTreeMap::from([
         (
             DEPENDS_ON.to_owned(),
-            system(
-                "Depends on",
-                "The node depends on the target. No cycles.",
-            ),
+            system("Depends on", "The node depends on the target. No cycles."),
         ),
         (
             RELATED.to_owned(),

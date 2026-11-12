@@ -1,4 +1,4 @@
-// Chromium checks of the board filters: tabs, the owner, assignee, status and readiness pickers
+// Chromium checks of the board filters: tabs, the owner, assignee and status pickers
 // and the search box change the visible rows in the same document. The filters read every level
 // of the tree, and each picker keeps its value in the board link.
 const {test} = require('node:test');

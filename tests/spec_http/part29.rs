@@ -1,12 +1,12 @@
 // Part 29 of tests/spec_http.rs, included there, so the test names stay unchanged.
 
-/// Create one ready implementation Task under an AC of a REQ.
-async fn ready_task(w: &World, id: &str, ac: &str) -> Result<String> {
-    w.command(ready_task_command(id, ac)).await?;
+/// Create one implementation Task under an AC of a REQ.
+async fn new_task(w: &World, id: &str, ac: &str) -> Result<String> {
+    w.command(new_task_command(id, ac)).await?;
     Ok(format!("task:{id}"))
 }
 
-fn ready_task_command(id: &str, ac: &str) -> Value {
+fn new_task_command(id: &str, ac: &str) -> Value {
     json!({"op":"save_object","kind":"task","id":id,"revision":0,"parent":format!("ac:{ac}"),"data":{"title":"Implement the specified work","owner":"owner","body":"Implement the criterion and record the result","projects":[]},"reason":"Plan the criterion"})
 }
 
@@ -26,7 +26,7 @@ async fn journal_position(w: &World) -> Result<i64> {
 async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     // edit-makes-revision-ac3
     let w = world().await?;
-    let t = ready_task(&w, "t", "key-rights").await?;
+    let t = new_task(&w, "t", "key-rights").await?;
     let title = "Implement the specified work";
     let save = |revision: u32, title: &str, extra: Value| {
         let mut data = json!({"title":title,"owner":"owner","body":"Implement the changed criterion and record the result","projects":[]});

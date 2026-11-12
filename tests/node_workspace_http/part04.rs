@@ -2,7 +2,7 @@
 
 // node-workspace-ac3
 #[tokio::test]
-async fn a_green_target_with_a_newer_revision_does_not_free_work_until_a_new_pin() -> Result<()> {
+async fn a_newer_revision_of_a_green_target_asks_for_review_until_a_new_pin() -> Result<()> {
     let w = world().await?;
     w.block_a_on_api().await?;
     w.record("6666666666666666666666666666666666666666", "pass")
@@ -25,78 +25,16 @@ async fn a_green_target_with_a_newer_revision_does_not_free_work_until_a_new_pin
         .await?;
     let read = w.object(&w.bot, &w.p, "ac:a").await?;
     ensure!(
-        read["remote_links"][0]["status"]["review_required"] == true
-            && read["remote_links"][0]["status"]["satisfied"] == false,
+        read["remote_links"][0]["status"]["review_required"] == true,
         "{read}"
     );
-    match w.free().await? {
-        Err(e) if e.contains(&w.waiting()) => {}
-        other => anyhow::bail!("a stale pin must not free work: {other:?}"),
-    }
+    // A new pin ends the review.
     w.block_a_on_api().await?;
-    w.free()
-        .await?
-        .map_err(|e| anyhow::anyhow!("free after the new pin: {e}"))?;
-    Ok(())
-}
-
-// node-workspace-ac3
-#[tokio::test]
-async fn a_red_dependency_of_a_green_target_keeps_work_waiting() -> Result<()> {
-    let w = world().await?;
-    // Q is a third workspace. API in C depends on CORE in Q; A in P depends on API.
-    let q = workspace(&w.pool, "core", false).await?;
-    w.ok(
-        &w.owner,
-        &q,
-        World::save(
-            "requirement",
-            "core",
-            0,
-            None,
-            json!({"title":"Core","owner":"owner","body":"The core rule"}),
-        ),
-    )
-    .await?;
-    w.ok(
-        &w.owner,
-        &q,
-        World::save(
-            "ac",
-            "y",
-            0,
-            Some("requirement:core"),
-            json!({"title":"Y","owner":"owner"}),
-        ),
-    )
-    .await?;
-    w.ok(
-        &w.owner,
-        &q,
-        World::bind("ac:y", TEST),
-    )
-    .await?;
-    let core = w.revision(&q, "requirement:core").await?;
-    let to_core = json!([{"workspace":q,"target":"requirement:core","relation":"depends_on","revision":core,"blocking":true}]);
-    w.set_links(&w.owner, &w.c, "requirement:api", to_core)
-        .await?
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    w.block_a_on_api().await?;
-
-    w.record_in(&w.c, "8888888888888888888888888888888888888888", "pass")
-        .await?;
-    w.record_in(&q, "9999999999999999999999999999999999999999", "fail")
-        .await?;
-    // X in C is green, but CORE in Q is red, so API is not ready and A waits.
-    match w.free().await? {
-        Err(e) if e.contains(&w.waiting()) => {}
-        other => anyhow::bail!("a red transitive dependency must hold A: {other:?}"),
-    }
-    w.record_in(&q, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "pass")
-        .await?;
-    w.free()
-        .await?
-        .map_err(|e| anyhow::anyhow!("claim after CORE is green: {e}"))?;
+    let read = w.object(&w.bot, &w.p, "ac:a").await?;
+    ensure!(
+        read["remote_links"][0]["status"]["review_required"] == false,
+        "{read}"
+    );
     Ok(())
 }
 

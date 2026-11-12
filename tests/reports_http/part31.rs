@@ -14,8 +14,8 @@ async fn ac6_a_dependency_cycle_through_the_tree_is_refused_over_http_and_mcp() 
     };
     // Each refusal leaves the committed rows and the journal position unchanged.
     for (case, source, target) in [
-        ("fixture 1: A1 waits for B1", "criterion:a1", "criterion:b1"),
-        ("fixture 2: A waits for B", "spec:a", "spec:b"),
+        ("fixture 1: A1 depends on B1", "criterion:a1", "criterion:b1"),
+        ("fixture 2: A depends on B", "spec:a", "spec:b"),
     ] {
         let object = p.read(source).await?;
         p.refuse_command_as(

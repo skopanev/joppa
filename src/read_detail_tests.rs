@@ -6,7 +6,7 @@ fn reply() -> Value {
     json!({"workspace": "w", "position": 3, "address": "ac:a", "kind": "ac", "id": "a",
         "current_revision": 2,
         "document": {"revision": 2, "parent": "requirement:r", "data": {"title": "A"}},
-        "signal": {"label": "Ready", "tone": "blue"},
+        "signal": {"label": "Current document", "tone": "blue"},
         "process": {"annotation_address": "ac:a"},
         "annotations": {"comments": {
             "c1": {"actor": "bot", "at": "2026-01-01", "text": "x", "withdrawn": false,
@@ -27,7 +27,7 @@ fn a_card_gives_the_counts_and_no_fact_that_comes_on_request() {
     assert_eq!(
         card,
         json!({"revision": 2, "parent": "requirement:r", "data": {"title": "A"},
-            "status": {"label": "Ready", "tone": "blue"}, "comments_count": 1,
+            "status": {"label": "Current document", "tone": "blue"}, "comments_count": 1,
             "files_count": 1,
             "relation_groups": [{"relation": "related", "kind": "note", "count": 1}]})
     );

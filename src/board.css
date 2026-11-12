@@ -7,8 +7,8 @@
   --bg:#fffcf5;--text:#444;--heading:#222;--muted:#6e685e;--rule:#d9d3c7;
   --link:#005cef;--visited:#8b6fcb;--code-bg:#eee;--badge-share:33%;
   --hover:#f5efe2;--selected:#faf6ec;--control-hover:#fff;--pass:#2d6c3c;--fail:#a13935;
-  --waiting:#865611;--available:#35643e;--progress:#2a6297;--ready:#196b70;
-  --moon-color:var(--muted);--sun-color:var(--waiting);
+  --sun:#865611;
+  --moon-color:var(--muted);--sun-color:var(--sun);
   --dot-green:var(--dot-green-light);--dot-yellow:var(--dot-yellow-light);--dot-orange:var(--dot-orange-light);--dot-red:var(--dot-red-light);--dot-purple:var(--dot-purple-light);--dot-blue:var(--dot-blue-light);
   --flow-blue:#2f6fdb;--flow-purple:#8a4fd8;--flow-teal:#0f9488;--flow-amber:#c27c0e;--flow-pink:#d63d8a;--flow-indigo:#4b4fc4;--flow-cyan:#0891b2;--flow-lime:#5e9e0f;
   --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23444' stroke-width='1.2'/%3E%3C/svg%3E");
@@ -20,7 +20,7 @@
   --bg:#191c20;--text:#d6d8dc;--heading:#f1f2f4;--muted:#a5a9b0;--rule:#444951;
   --link:#8cb5ff;--visited:#bca5ed;--code-bg:#272b31;--badge-share:35%;
   --hover:#282d34;--selected:#22272d;--control-hover:#282d34;--pass:#8ccba0;--fail:#f19993;
-  --waiting:#e0b15b;--available:#8ccba0;--progress:#8cb5ff;--ready:#81c8cf;
+  --sun:#e0b15b;
   --dot-green:var(--dot-green-dark);--dot-yellow:var(--dot-yellow-dark);--dot-orange:var(--dot-orange-dark);--dot-red:var(--dot-red-dark);--dot-purple:var(--dot-purple-dark);--dot-blue:var(--dot-blue-dark);
   --flow-blue:#6ea0f5;--flow-purple:#b48af0;--flow-teal:#3cc9b9;--flow-amber:#f0b44c;--flow-pink:#f07ab4;--flow-indigo:#8a8ef0;--flow-cyan:#4fc8e6;--flow-lime:#a0d94a;
   --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23a5a9b0' stroke-width='1.2'/%3E%3C/svg%3E");
@@ -31,7 +31,7 @@
     --bg:#191c20;--text:#d6d8dc;--heading:#f1f2f4;--muted:#a5a9b0;--rule:#444951;
     --link:#8cb5ff;--visited:#bca5ed;--code-bg:#272b31;--badge-share:35%;
     --hover:#282d34;--selected:#22272d;--control-hover:#282d34;--pass:#8ccba0;--fail:#f19993;
-    --waiting:#e0b15b;--available:#8ccba0;--progress:#8cb5ff;--ready:#81c8cf;
+    --sun:#e0b15b;
     --dot-green:var(--dot-green-dark);--dot-yellow:var(--dot-yellow-dark);--dot-orange:var(--dot-orange-dark);--dot-red:var(--dot-red-dark);--dot-purple:var(--dot-purple-dark);--dot-blue:var(--dot-blue-dark);
     --flow-blue:#6ea0f5;--flow-purple:#b48af0;--flow-teal:#3cc9b9;--flow-amber:#f0b44c;--flow-pink:#f07ab4;--flow-indigo:#8a8ef0;--flow-cyan:#4fc8e6;--flow-lime:#a0d94a;
     --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='m1 1 4 4 4-4' fill='none' stroke='%23a5a9b0' stroke-width='1.2'/%3E%3C/svg%3E");

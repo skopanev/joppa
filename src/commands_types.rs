@@ -196,7 +196,7 @@ pub struct CompleteTaskOp {
     pub revision: u32,
     pub id: String,
     pub evidence: String,
-    /// The git sha where the Task is ready.
+    /// The git sha where the Task is done.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
 }

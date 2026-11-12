@@ -41,7 +41,7 @@ fn a_page_gives_25_items_a_cursor_and_the_total() {
 #[test]
 fn a_list_item_is_short_and_fields_keep_each_named_path() {
     let item = json!({"address":"ac:a","title":"A","revision":3,"body":"Long",
-        "signal":{"label":"Ready","tone":"green"},"present":true,"process":{"verification":"pass"}});
+        "signal":{"label":"Checks passed","tone":"green"},"present":true,"process":{"verification":"pass"}});
     assert_eq!(
         list_item(&item, None),
         json!({"address":"ac:a","title":"A","status":"green"})
@@ -90,7 +90,7 @@ fn a_detail_gives_each_fact_once() {
     let reply = json!({"workspace":"w","workspace_key":"w","position":9,"address":"ac:a",
         "kind":"ac","id":"a","item_id":"w-A-1","current_revision":4,"revision_count":4,
         "historical":false,"metadata_scope":"current",
-        "document":stored,"signal":{"label":"Ready","tone":"green"},
+        "document":stored,"signal":{"label":"Checks passed","tone":"green"},
         "relations":{"related":{"edges":[{"to":"ac:b","title":"B","current_revision":2,"present":true}]},
             "depends_on":{"edges":[{"to":"task:t","revision":3,"title":"T","current_revision":5,"present":false}]}},
         "references":[{"target":"consumer:agent","field":"consumer","title":"Agent","current_revision":2,"present":true}],
@@ -106,7 +106,7 @@ fn a_detail_gives_each_fact_once() {
     assert_eq!(
         detail(reply.clone(), "ac:a", None).unwrap(),
         json!({"revision":4,"parent":"requirement:r","data":{"title":"A","note":null},
-            "status":{"label":"Ready","tone":"green"},
+            "status":{"label":"Checks passed","tone":"green"},
             "relations":{"related":{"edges":[{"to":"ac:b","title":"B"}]},
                 "depends_on":{"edges":[{"to":"task:t","title":"T","revision":3,
                     "current_revision":5,"present":false}]}},

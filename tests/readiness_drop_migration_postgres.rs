@@ -17,7 +17,7 @@ const B: &str = "ac:b";
 const T: &str = "task:t";
 
 /// The rows of release 066: the column work_ready, and readiness in the rollup of each row.
-/// B and T wait for A.
+/// B and T depend on A.
 const RELEASE_066: &str =
     "ALTER TABLE joppa.objects ADD COLUMN IF NOT EXISTS work_ready boolean NOT NULL DEFAULT true";
 const ROLLUP_066: &str = "UPDATE joppa.objects SET work_ready = address <> ALL($2), rollup = COALESCE(rollup,'{}'::jsonb) || CASE WHEN address = ANY($2) THEN jsonb_build_object('work_ready',false,'waits_for',jsonb_build_object('address',$3::text,'count',1)) ELSE jsonb_build_object('work_ready',true) END WHERE workspace=$1";

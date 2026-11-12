@@ -105,11 +105,10 @@ the object has none. Each link has `workspace` (name or ID; the server stores th
 
 - The server refuses an absent or archived target, a revision above the current one, and a workspace that the writer cannot read.
 - A blocking link that closes a dependency cycle across workspaces is refused.
-- A read gives `remote_links`, each with `status`: `access`, `present`, `current_revision`, `review_required` and `satisfied`.
+- A read gives `remote_links`, each with `status`: `access`, `present`, `current_revision` and `review_required`.
 - `review_required` is true when the target has a newer revision, or is archived or absent. The object then has `remote_review_required: true`.
 - A new, changed or removed pin resets the criteria below the object. Save the links again with the new revision after the review.
-- A blocking link is `satisfied` when its pin is current, every criterion at and below the target is green, and the blocking links of the target are satisfied too.
-- Without read access, a status has `access: false` and null values, and a blocking link is not satisfied.
+- Without read access, a status has `access: false` and null values.
 - An empty `links` list removes the remote links of the object.
 
 `workspace_key` in joppa_tree is the immutable ID of the workspace. joppa_tree gives it only

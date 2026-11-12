@@ -20,7 +20,6 @@ struct World {
     owner: String,
     bot: String,
     alex: String,
-    pool: deadpool_postgres::Pool,
     http: reqwest::Client,
 }
 
@@ -105,7 +104,6 @@ async fn world() -> Result<World> {
                 owner,
                 bot,
                 alex,
-                pool,
                 http: reqwest::Client::new(),
             };
             w.fixture().await?;

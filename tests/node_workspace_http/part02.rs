@@ -55,16 +55,6 @@ impl World {
         .await?
         .map_err(|e| anyhow::anyhow!("{address}: {e}"))
     }
-    async fn record_in(&self, ws: &str, commit: &str, status: &str) -> Result<()> {
-        self.mcp(
-            &self.bot,
-            "joppa_record_results",
-            json!({"workspace":ws,"commit":commit,"results":[{"test":TEST,"status":status}]}),
-        )
-        .await?
-        .map_err(|e| anyhow::anyhow!("record: {e}"))?;
-        Ok(())
-    }
     async fn record(&self, commit: &str, status: &str) -> Result<()> {
         self.mcp(
             &self.bot,
@@ -82,7 +72,7 @@ impl World {
     fn save(kind: &str, id: &str, revision: u64, parent: Option<&str>, data: Value) -> Value {
         json!({"op":"save_object","kind":kind,"id":id,"revision":revision,"parent":parent,"data":data,"reason":"Fixture"})
     }
-    /// P: requirement R with criterion A, ready for planning. C: requirement API with
+    /// P: requirement R with criterion A. C: requirement API with
     /// criterion X that lists TEST.
     async fn fixture(&self) -> Result<()> {
         let (owner, p, c) = (&self.owner, &self.p, &self.c);
@@ -183,17 +173,5 @@ impl World {
         .await?
         .map_err(|e| anyhow::anyhow!("{e}"))?;
         Ok(())
-    }
-    fn waiting(&self) -> String {
-        format!("waits for @{}/requirement:api, which is not green", self.c)
-    }
-    /// Work under A is free when every blocking remote link of A is satisfied for the bot.
-    async fn free(&self) -> Result<Result<Value, String>> {
-        let a = self.object(&self.bot, &self.p, "ac:a").await?;
-        let links = a["remote_links"].as_array().cloned().unwrap_or_default();
-        let waits = links
-            .iter()
-            .any(|l| l["blocking"] == true && l["status"]["satisfied"] != true);
-        Ok(if waits { Err(self.waiting()) } else { Ok(a) })
     }
 }

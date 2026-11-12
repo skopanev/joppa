@@ -37,7 +37,7 @@ test('node-workspace-ac7 board: a node shows its child workspace and its links t
     for (const [address, text, href] of [
       ['component:backend', 'Child workspace', '/?workspace=' + c],
       ['note:mobile', 'Links to other workspaces', '/?workspace=' + c + '&object=domain%3Aapi'],
-      ['note:mobile', 'not ready, pin stale · changed: revision 1 → 2', '/?workspace=' + c + '&object=domain%3Aauth'],
+      ['note:mobile', ' · changed: revision 1 → 2', '/?workspace=' + c + '&object=domain%3Aauth'],
     ]) {
       await f.page.goto(f.live.root + '/?workspace=' + encodeURIComponent(f.live.ws) + '&object=' + encodeURIComponent(address));
       const section = f.page.locator('.workspace-links').first();

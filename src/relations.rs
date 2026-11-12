@@ -1,6 +1,6 @@
 //! The relations of a node: one key for each relation of the registry in the tree schema, with
-//! an optional title of the node for that relation and the edges of the key. depends_on makes
-//! the node wait until the target is green and refuses cycles, related blocks nothing, and
+//! an optional title of the node for that relation and the edges of the key. depends_on orders
+//! the work and refuses cycles, related blocks nothing, and
 //! each other key is a flow: it allows cycles, blocks nothing and resets no criterion.
 //!
 //! An older event and an older stored revision hold `links`. They map by the replay rule: a

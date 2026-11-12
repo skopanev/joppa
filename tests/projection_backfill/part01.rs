@@ -1,4 +1,4 @@
-// Part 1 of tests/readiness_metadata.rs, included there, so the test names stay unchanged.
+// Part 1 of tests/projection_backfill.rs, included there, so the test names stay unchanged.
 
 // ac:gate-checks-subject
 #[tokio::test]
@@ -17,7 +17,7 @@ async fn backfill_reprojects_the_process_from_an_older_projection_version() -> a
         "isolated test database required"
     );
     store::migrate(&pool).await?;
-    let ws = format!("readiness-{}", uuid::Uuid::new_v4().simple());
+    let ws = format!("backfill-{}", uuid::Uuid::new_v4().simple());
     common::seed(&pool, &ws, "owner", common::setup()).await?;
     store::execute_input(&pool, &ws, "owner", "other", &json!({"op":"save_object","kind":"requirement","id":"other","revision":0,
         "parent":"capability:c","data":{"title":"Other scope","body":"Scope","owner":"owner","consumers":["customer"]},"reason":"Define"})).await?;

@@ -108,7 +108,7 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
     let status = &read["remote_links"][0]["status"];
     ensure!(
         *status
-            == json!({"access":true,"present":true,"current_revision":pin,"review_required":false,"satisfied":false}),
+            == json!({"access":true,"present":true,"current_revision":pin,"review_required":false}),
         "{read}"
     );
     // C changes its contract: the pinned link now asks for a review.
@@ -133,7 +133,7 @@ async fn a_remote_link_checks_its_target_and_shows_a_changed_contract() -> Resul
     let alex = w.object(&w.alex, &w.p, "ac:a").await?;
     ensure!(
         alex["remote_links"][0]["status"]
-            == json!({"access":false,"present":null,"current_revision":null,"review_required":null,"satisfied":false}),
+            == json!({"access":false,"present":null,"current_revision":null,"review_required":null}),
         "{alex}"
     );
     // A stale links revision, a future pin, an unknown target, the own workspace and no access.
@@ -214,25 +214,8 @@ async fn an_archived_target_is_shown_for_review_and_a_batch_writes_links_atomica
     ensure!(
         read["remote_review_required"] == true
             && read["remote_links"][0]["status"]
-                == json!({"access":true,"present":false,"current_revision":null,"review_required":true,"satisfied":false}),
+                == json!({"access":true,"present":false,"current_revision":null,"review_required":true}),
         "{read}"
     );
-    Ok(())
-}
-
-// node-workspace-ac3
-#[tokio::test]
-async fn work_waits_for_a_blocking_remote_link_until_its_target_is_green() -> Result<()> {
-    let w = world().await?;
-    w.block_a_on_api().await?;
-    match w.free().await? {
-        Err(e) if e.contains(&w.waiting()) => {}
-        other => anyhow::bail!("expected the wait, got {other:?}"),
-    }
-    w.record("2222222222222222222222222222222222222222", "pass")
-        .await?;
-    w.free()
-        .await?
-        .map_err(|e| anyhow::anyhow!("free after green: {e}"))?;
     Ok(())
 }

@@ -3,7 +3,7 @@
 //! A criterion lists its tests by name. The block test_results of the tree schema gives the
 //! form of a name and the largest list. The list keeps its own history, apart from the
 //! requirement revision. Each save, also an identical one, resets the criterion:
-//! earlier reports stop counting and its readiness is cleared.
+//! earlier reports stop counting.
 //! With draft_on_text_change, a change of the draft_fields of the criterion makes the
 //! saved list a draft until it is saved again.
 use crate::model::Workspace;

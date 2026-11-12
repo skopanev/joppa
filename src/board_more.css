@@ -60,8 +60,6 @@
 .status-circle.red{--signal:var(--dot-red)}.status-circle.purple{--signal:var(--dot-purple)}.status-circle.blue{--signal:var(--dot-blue)}
 .status-circle.numbered{width:auto;height:auto;background:none;border-radius:0;color:color-mix(in srgb,var(--signal) var(--badge-share),var(--heading));font-size:.8em;vertical-align:baseline}
 .status-hint{position:fixed;z-index:10000;pointer-events:none;max-width:min(300px,calc(100vw - 16px));padding:.5em .7em;background:var(--heading);color:var(--bg);font-size:.75em;line-height:1.45;white-space:pre-line;overflow-wrap:anywhere}
-.waiting{--status-ink:var(--waiting)}.available{--status-ink:var(--available)}.progress{--status-ink:var(--progress)}
-.ready{--status-ink:var(--ready)}.pass{--status-ink:var(--pass)}.fail{--status-ink:var(--fail)}
 .node-title>.status-circle{vertical-align:middle}
 .common-object>summary>.verification-chip{flex:none;margin:0 .6em 0 0;font-size:.8rem;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .common-object>summary>.verification-chip.has-passes{color:var(--pass)}
@@ -163,7 +161,7 @@ dialog::backdrop{background:#22222240}
 .history-button:hover,.fields-button:hover,.fields-button[aria-expanded=true]{color:var(--link)}
 .history-button svg,.fields-button svg{display:inline-block;width:13px;height:13px;vertical-align:middle;position:relative;top:.5px}
 
-/* Ordering dependencies: a waiting row names its first unfinished target. */
+/* The assignee chip and the read-only depends_on list of a row. */
 .common-object>summary>.assignee-chip{flex:0 1 auto;min-width:0;max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem;color:var(--muted)}
 .object-dependencies{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:baseline;gap:.4em 1em;min-width:0;font-size:.85rem}
 .dependency-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:.3em .8em;flex-basis:100%;min-width:0;margin:0}

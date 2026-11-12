@@ -13,14 +13,14 @@ async fn tasks_under_two_requirements(w: &World) -> Result<()> {
         ],
     )
     .await?;
-    ready_task(w, "t1", "key-rights").await?;
-    ready_task(w, "t2", "other-rights").await?;
+    new_task(w, "t1", "key-rights").await?;
+    new_task(w, "t2", "other-rights").await?;
     Ok(())
 }
 
 /// A Task save with one depends_on edge to `target` at revision 1.
 fn linked_task_command(id: &str, revision: u32, ac: &str, target: &str) -> Value {
-    let mut command = ready_task_command(id, ac);
+    let mut command = new_task_command(id, ac);
     command["revision"] = json!(revision);
     command["relations"] = json!({"depends_on":{"edges":[{"to":target,"revision":1}]}});
     command
@@ -82,7 +82,7 @@ async fn a_task_link_added_across_criteria_of_one_requirement_is_saved() -> Resu
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
     // Bot creates task:t4 so that bot, as its unclaimed creator, may add the link.
-    w.command_as(&w.bot, ready_task_command("t4", "other-audit"))
+    w.command_as(&w.bot, new_task_command("t4", "other-audit"))
         .await?;
     let t4 = "task:t4";
     let (ok, saved) = send_as(

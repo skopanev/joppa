@@ -1,4 +1,4 @@
-//! Database setup at serve start: the pool, migrations, notes, readiness metadata and the board backfill.
+//! Database setup at serve start: the pool, migrations, notes and the board backfill.
 use super::*;
 
 pub fn pool(url: &str) -> Result<Pool> {
@@ -119,7 +119,6 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         search::project(&*tx, &id, &state, events.last().map_or(0, |e| e.position), None).await?;
     }
     migrate_notes_in(&*tx).await?;
-    refresh_readiness_in(&*tx).await?;
     write::migrate_legacy_receipts(&*tx).await?;
     super::references::remove_dangling(&*tx).await?;
     tx.commit().await?;
@@ -206,30 +205,6 @@ async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
             )
             .await?;
         }
-    }
-    Ok(())
-}
-
-async fn refresh_readiness_in(client: &impl GenericClient) -> Result<()> {
-    for row in client.query("SELECT workspace FROM joppa.board_cache WHERE COALESCE(first_view->>'readiness_metadata_version','')<>$1 ORDER BY workspace", &[&READINESS_METADATA_VERSION]).await? {
-        let workspace: String = row.get(0);
-        client.execute("SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))", &[&workspace]).await?;
-        let (state, _) = state_rows::current(client, &workspace).await?;
-        let schema = crate::objects::schema(&state);
-        let mut selected: std::collections::BTreeSet<_> = state.objects.iter().filter(|(_, o)| {
-            schema.types.get(&o.kind).is_some_and(|t| matches!(t.role.as_str(), "ac" | "task"))
-        }).map(|(key, _)| key.clone()).collect();
-        loop {
-            let dependents: Vec<_> = state.objects.iter().filter(|(key, o)| {
-                !selected.contains(*key) && (o.current().parent.as_deref().is_some_and(|parent| selected.contains(crate::objects::resolve_address(&state,parent)))
-                    || o.current().depends_on().any(|edge| selected.contains(crate::objects::resolve_address(&state,&edge.to)))
-                    || o.current().data["depends_on"].as_array().is_some_and(|deps| deps.iter().filter_map(Value::as_str).any(|key| selected.contains(&crate::objects::criterion_address(key)))))
-            }).map(|(key,_)|key.clone()).collect();
-            if dependents.is_empty() { break; }
-            selected.extend(dependents);
-        }
-        objects::project(client, &workspace, &state, &[], Some(&selected)).await?;
-        client.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{readiness_metadata_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&READINESS_METADATA_VERSION]).await?;
     }
     Ok(())
 }

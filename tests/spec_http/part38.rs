@@ -11,13 +11,13 @@ async fn a_dependency_cycle_through_tasks_is_refused_like_any_other() -> Result<
     let w = world().await?;
     tasks_under_two_requirements(&w).await?;
     let saved = w.get("address=task:t1").await?;
-    // A Task waits on its own requirement: the requirement needs the Task's criterion.
+    // A Task depends on its own requirement: the requirement covers the Task's criterion.
     let pin = w.get("address=requirement:key").await?["current_revision"].clone();
     let mut own = linked_task_command("t1", 1, "key-rights", "requirement:key");
     own["relations"]["depends_on"]["edges"][0]["revision"] = pin;
     let reply = send_as(&w, &w.owner, &own).await?;
     ensure!(refused(&reply, "dependency cycle"), "{reply:?}");
-    // T2 waits on T1, so T1 cannot wait on T2.
+    // T2 depends on T1, so T1 cannot depend on T2.
     let (ok, linked) = send_as(
         &w,
         &w.owner,

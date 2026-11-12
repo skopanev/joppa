@@ -6,8 +6,8 @@
 //! revision: each criterion type gets the required single reference `consumer`, and the
 //! criterion and requirement types lose their references to the built-in Consumer type.
 //! Each live criterion then gets one new revision with the first valid consumer of its
-//! old list, else of its requirement. The text, the tests and the readiness of the
-//! criterion do not change, so its status stays. A criterion without a valid consumer
+//! old list, else of its requirement. The text and the tests of the criterion do not
+//! change, so its status stays. A criterion without a valid consumer
 //! keeps its document and needs a consumer at its next save.
 use crate::model::Workspace;
 use crate::objects::{ReferenceRule, TreeType, resolve_address, schema};

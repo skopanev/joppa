@@ -1,4 +1,4 @@
-// Part 2 of tests/readiness_metadata.rs, included there, so the test names stay unchanged.
+// Part 2 of tests/projection_backfill.rs, included there, so the test names stay unchanged.
 
 // A new workspace stores an epoch at position 1 for each replay rule. A journal without the
 // epoch of a rule refuses to replay: the replay cannot tell the old meaning of its events.
