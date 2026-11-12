@@ -155,6 +155,7 @@ async fn a_new_file_version_lists_first_and_both_versions_download() -> Result<(
 }
 
 // ac:8mgon8qt
+// ac:flg87alq
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<()> {
@@ -232,7 +233,8 @@ async fn configured_type_question_is_available_to_an_agent_over_mcp() -> Result<
                 .await?
             };
             ensure!(saved["object"]["revision"] == revision + 1, "{saved}");
-            if kind == "observation" {
+            // Only the HTTP save (revision 0) gives the question: an MCP receipt echoes none.
+            if kind == "observation" && revision == 0 {
                 ensure!(saved["object"]["question"] == question, "{saved}");
             } else {
                 ensure!(saved["object"].get("question").is_none(), "{saved}");

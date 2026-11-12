@@ -22,7 +22,7 @@ fn absent(value: &Value, keys: &[&str]) -> bool {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
     let w = record_world::world(&["tests/x.rs > t"]).await?;
-    // A schema write gives the new schema revision and not the sent types.
+    // A schema write gives the new schema revision, and not the sent types or reason.
     let tree = read(&w, "joppa_tree", json!({})).await?;
     let revision = tree["schema"]["revision"].as_u64().unwrap_or_default();
     let schema = write(
@@ -34,8 +34,7 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
     .await?;
     ensure!(
         schema["schema_revision"] == revision + 1
-            && schema["command"]
-                == json!({"op":"set_tree_schema","revision":revision,"reason":"Add Tasks"})
+            && schema["command"] == json!({"op":"set_tree_schema","revision":revision})
             && absent(&schema, &["summary", "system_ids"]),
         "{schema}"
     );
@@ -76,12 +75,22 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             "{batch}"
         );
     }
+    // A record gives its id, count, position and unbound tests, and no commit or actor.
+    let record = w
+        .recorded(
+            &"a".repeat(40),
+            json!([{"test":"tests/x.rs > t","status":"pass"}]),
+        )
+        .await?;
+    ensure!(
+        record["record"].is_u64()
+            && record["tests"] == 1
+            && record["position"].is_u64()
+            && record["unbound"] == json!([])
+            && absent(&record, &["commit", "actor", "summary", "system_ids"]),
+        "{record}"
+    );
     // A record names itself only by its address.
-    w.recorded(
-        &"a".repeat(40),
-        json!([{"test":"tests/x.rs > t","status":"pass"}]),
-    )
-    .await?;
     let newest = read(
         &w,
         "joppa_history",

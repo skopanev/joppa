@@ -40,6 +40,7 @@ fn row(test: &str, status: &str, message: Option<&str>) -> (String, String, Opti
 
 // ac:no-manual-pass-ac1
 // ac:agent-clarity-ac2
+// ac:flg87alq
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
@@ -65,8 +66,9 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
     let t0 = w.clock().await?;
     let reply = w.recorded(C, results).await?;
     let t1 = w.clock().await?;
+    // The MCP reply echoes no commit or actor (ac:flg87alq): History and the journal give them.
     ensure!(
-        reply["actor"] == "bot" && reply["commit"] == C && reply["tests"] == 4,
+        reply["tests"] == 4 && reply.get("actor").is_none() && reply.get("commit").is_none(),
         "{reply}"
     );
     // Exactly one journal entry follows the earlier position.
@@ -99,6 +101,9 @@ async fn one_record_stores_pass_fail_skip_and_todo() -> Result<()> {
         .await?
         .get(0);
     ensure!(inside, "at {at} is not between {t0} and {t1}");
+    // The journal entry of the record holds actor bot and commit C.
+    let journal: String = conn.query_one("SELECT actor||' '||(command->>'commit') FROM joppa.events WHERE workspace=$1 AND position=$2", &[&w.ws, &entry["position"].as_i64()]).await?.get(0);
+    ensure!(journal == format!("bot {C}"), "{journal}");
     // The record of the entry holds the four supplied outcomes and no outcome for O.
     let id = reply["record"].as_i64().unwrap_or_default();
     let stored = conn.query("SELECT r.commit_sha,r.uploader,o.title,t.status,COALESCE(t.message,t.fields->>'message') FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id JOIN joppa.objects o ON o.workspace=r.workspace AND o.address=t.address WHERE r.id=$1 ORDER BY o.title", &[&id]).await?;

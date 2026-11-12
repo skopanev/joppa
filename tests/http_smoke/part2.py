@@ -1,7 +1,9 @@
 """Part 2 of tests/http_smoke.py. The script runs it in its own global names, in order."""
 # Agents add object notes through MCP.
-mcp('joppa_command', {'workspace':ws,'request_id':'agent-note',
+# ac:flg87alq: the MCP note receipt names the note and echoes no text.
+noted = mcp('joppa_command', {'workspace':ws,'request_id':'agent-note',
     'command':{'op':'note','target':'requirement:key','id':'agent-note','text':'Agent note'}})
+assert noted['command'] == {'op':'note','target':'requirement:key','id':'agent-note'}, noted
 readback = mcp('joppa_objects', {'workspace':ws,'address':'requirement:key','fields':['comments']})
 assert any(c['id'] == 'agent-note' and c['text'] == 'Agent note' for c in readback['comments']['items'])
 upload = urllib.request.Request(base+'/api/workspaces/'+ws+'/blobs', data=b'Attachment evidence',
@@ -104,7 +106,8 @@ def client(*arguments, stdin=None):
     return json.loads(result.stdout)
 assert client('search','Restore access','--kind','task')['items'][0]['address'] == task_id
 note = json.dumps({'op':'note','target':task_id,'id':'cli-note','text':'Started the build'})
-assert client('command',mcp_ws,'cli-note',stdin=note)['command']['op'] == 'note'
+cli_note = client('command',mcp_ws,'cli-note',stdin=note)['command']
+assert cli_note['op'] == 'note' and 'text' not in cli_note, cli_note  # ac:flg87alq
 found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
 assert not {'mode','semantic_status','embedded','indexed'} & found.keys()
 # ac:h0wbjo1a: an MCP hit gives no score.
