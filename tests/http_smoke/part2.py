@@ -107,7 +107,8 @@ note = json.dumps({'op':'note','target':task_id,'id':'cli-note','text':'Started 
 assert client('command',mcp_ws,'cli-note',stdin=note)['command']['op'] == 'note'
 found = mcp('joppa_search', {'workspace':mcp_ws,'query':'recovery','kind':'requirement'})
 assert not {'mode','semantic_status','embedded','indexed'} & found.keys()
-assert found['items'][0]['address'] == 'requirement:'+task_req and not {'system_id','req','kind','id'} & found['items'][0].keys()
+# ac:h0wbjo1a: an MCP hit gives no score.
+assert found['items'][0]['address'] == 'requirement:'+task_req and not {'system_id','req','kind','id','score'} & found['items'][0].keys()
 denied_search = request('/mcp', {'jsonrpc':'2.0','id':1,'method':'tools/call',
     'params':{'name':'joppa_search','arguments':{'workspace':mcp_ws,'query':'recovery'}}},other_token)[1]
 assert denied_search['result']['isError']

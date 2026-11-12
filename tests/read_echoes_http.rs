@@ -17,7 +17,7 @@ fn absent(value: &Value, keys: &[&str]) -> bool {
     keys.iter().all(|k| value.get(*k).is_none())
 }
 
-// read-mcp-echoes
+// ac:read-mcp-echoes
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
@@ -97,15 +97,26 @@ async fn mcp_replies_repeat_no_fact_and_echo_no_argument() -> Result<()> {
             && absent(entry, &["record", "report"]),
         "{newest}"
     );
-    // History and relations_of give no workspace and no snapshot position.
-    for args in [json!({}), json!({"open":true,"limit":5})] {
+    // History and relations_of give no workspace and no snapshot position. An entry gives no
+    // signal and no kind. With open true, each entry is open, so no entry gives its status.
+    for (args, open) in [(json!({}), false), (json!({"open":true,"limit":5}), true)] {
         let history = read(&w, "joppa_history", args).await?;
+        let status = |i: &Value| {
+            if open {
+                absent(i, &["status"])
+            } else {
+                i["status"] == "open" || i["status"] == "processed"
+            }
+        };
         ensure!(
             absent(
                 &history,
                 &["workspace", "position", "open", "order", "after", "limit"]
             ) && history["items"].as_array().is_some_and(|items| {
-                !items.is_empty() && items.iter().all(|i| absent(i, &["signal"]))
+                !items.is_empty()
+                    && items
+                        .iter()
+                        .all(|i| absent(i, &["signal", "kind"]) && status(i))
             }),
             "{history}"
         );

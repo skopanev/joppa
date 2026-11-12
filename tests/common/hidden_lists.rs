@@ -31,7 +31,24 @@ pub async fn web(w: &World, token: &str, path: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-/// Every joppa_list item of the member of `token`, through all pages.
+/// Ok when a joppa_list item is {id, title}, or {id, title, hidden: true} for a workspace that
+/// the caller hides (tac:tcospnl8).
+pub fn lean_item(item: &Value) -> Result<()> {
+    let map = item.as_object().with_context(|| format!("item {item}"))?;
+    let text = |k: &str| map.get(k).is_some_and(Value::is_string);
+    let named = text("id") && text("title");
+    let keys = map
+        .iter()
+        .all(|(k, v)| k == "id" || k == "title" || (k == "hidden" && *v == json!(true)));
+    ensure!(
+        named && keys,
+        "a joppa_list item is not {{id, title, hidden?}}: {item}"
+    );
+    Ok(())
+}
+
+/// Every joppa_list item of the member of `token`, through all pages. Each item passes
+/// `lean_item`.
 pub async fn joppa_list(w: &World, token: &str) -> Result<Vec<Value>> {
     let (mut all, mut cursor) = (vec![], Value::Null);
     loop {
@@ -42,7 +59,9 @@ pub async fn joppa_list(w: &World, token: &str) -> Result<Vec<Value>> {
         };
         let page = w.mcp(token, "joppa_list", args).await?;
         let page = page.map_err(anyhow::Error::msg)?;
-        all.extend(page["items"].as_array().cloned().unwrap_or_default());
+        let items = page["items"].as_array().cloned().unwrap_or_default();
+        items.iter().try_for_each(lean_item)?;
+        all.extend(items);
         cursor = page["next_cursor"].clone();
         if !cursor.is_string() {
             return Ok(all);

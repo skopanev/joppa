@@ -55,7 +55,7 @@ async fn five_changes(w: &World) -> Result<(i64, i64)> {
     Ok((p, report["record"].as_i64().unwrap_or_default()))
 }
 
-// workspace-timeline-ac1
+// ac:workspace-timeline-ac1
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() -> Result<()> {
@@ -69,7 +69,14 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
             json!({"workspace":w.ws,"after":p}),
         )
         .await?;
-    ensure!(mcp_shape::history(&http) == mcp, "HTTP {http}\nMCP {mcp}");
+    // MCP gives the same positions, actors, addresses, changes and reasons. The MCP entry has
+    // no kind, and its at has no fraction of a second.
+    mcp_shape::same_history(&http, &mcp).map_err(anyhow::Error::msg)?;
+    let mcp_items = mcp["items"].as_array().cloned().unwrap_or_default();
+    ensure!(
+        mcp_items.iter().all(|i| i.get("kind").is_none()),
+        "{mcp}"
+    );
     ensure!(http["next_cursor"].is_null(), "{http}");
     let items = http["items"].as_array().unwrap();
     ensure!(items.len() == 5, "{http}");
@@ -131,7 +138,8 @@ async fn an_agent_reads_the_five_changes_after_a_position_over_http_and_mcp() ->
     Ok(())
 }
 
-// workspace-timeline-ac3
+// ac:workspace-timeline-ac3
+// The MCP page follows ac:jkvdy2jl: no kind, no change equal to its op, whole seconds.
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_member_reads_the_history_and_a_stranger_gets_the_absent_workspace_reply() -> Result<()>
@@ -165,7 +173,7 @@ async fn a_member_reads_the_history_and_a_stranger_gets_the_absent_workspace_rep
     let mcp = w
         .mcp(&maria, "joppa_history", json!({"workspace":w.ws}))
         .await?;
-    ensure!(mcp == mcp_shape::history(&history), "{mcp} / {history}");
+    mcp_shape::same_history(&history, &mcp).map_err(anyhow::Error::msg)?;
     let eve = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),

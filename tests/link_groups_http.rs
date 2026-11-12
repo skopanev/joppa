@@ -50,7 +50,7 @@ async fn http_page(root: &str, ws: &str, cursor: Option<&str>) -> Result<Value> 
         .await?)
 }
 
-// grouped-links-read
+// ac:grouped-links-read
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result<()> {
@@ -144,7 +144,7 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
         }
         let tool = world::mcp(&server.root, "bot", "joppa_objects", args).await?;
         // MCP and HTTP give the same page: the same items, the same total and the same next
-        // cursor. Each item names its relation and gives no blocking.
+        // cursor.
         let http = http_page(&server.root, &ws, cursor.as_deref()).await?;
         let addresses = |page: &Value| -> Vec<Value> {
             let items = page["items"].as_array().cloned().unwrap_or_default();
@@ -156,13 +156,23 @@ async fn an_object_read_gives_link_counts_and_a_group_reads_in_pages() -> Result
                 && tool["next_cursor"] == http["next_cursor"],
             "HTTP and MCP disagree:\n{tool}\n{http}"
         );
+        // The read filters on relation, direction and kind: an MCP edge gives none of them and
+        // no blocking. The HTTP edge has relation "related".
         let items = tool["items"].as_array().cloned().unwrap_or_default();
+        let filtered = ["relation", "kind", "direction", "blocking"];
         ensure!(
             tool["total"] == 120
                 && items
                     .iter()
-                    .all(|i| i["relation"] == "related" && i.get("blocking").is_none()),
+                    .all(|i| filtered.iter().all(|k| i.get(*k).is_none())),
             "{tool}"
+        );
+        let edges = http["items"].as_array().cloned().unwrap_or_default();
+        ensure!(
+            edges
+                .iter()
+                .all(|i| i["relation"] == "related" && i.get("blocking").is_none()),
+            "{http}"
         );
         sizes.push(items.len());
         for item in &items {

@@ -147,14 +147,27 @@ async fn type_status_rules_ac1_the_owner_saves_a_status_rule_for_each_type() -> 
     let revision = tree["current_revision"].as_u64().context("revision")?;
     ensure!(revision == before + 1, "{before} -> {revision}");
     let types = &tree["schema"]["types"];
-    // The MCP tool joppa_tree shows the same revision and the same saved rules, without
-    // the false type flags, and names the title limit title_max_length.
+    // The MCP tool joppa_tree shows the same revision and the same saved rules, without the
+    // false type flags and the type UI fields (ac:bwc9qvme). It names a title limit other
+    // than the default 128 title_max_length.
     let mcp = w.mcp(&w.owner, "joppa_tree", json!({})).await?;
-    let mut lean = joppa::mcp_lean::lean("joppa_tree", &json!({}), tree.clone());
-    joppa::read_compact::rename_title_length(&mut lean);
+    let mut lean = types.clone();
+    for t in lean.as_object_mut().into_iter().flat_map(|m| m.values_mut()) {
+        let Some(map) = t.as_object_mut() else {
+            continue;
+        };
+        map.retain(|k, v| {
+            let flag = ["inbox", "launch_blocker", "root"].contains(&k.as_str()) && *v == false;
+            !flag && !["color", "badge", "index", "title_size"].contains(&k.as_str())
+        });
+        if let Some(limit) = map.remove("title_preview_length")
+            && limit != 128
+        {
+            map.insert("title_max_length".into(), limit);
+        }
+    }
     ensure!(
-        mcp["schema"]["revision"] == tree["current_revision"]
-            && mcp["schema"]["types"] == lean["schema"]["types"],
+        mcp["schema"]["revision"] == tree["current_revision"] && mcp["schema"]["types"] == lean,
         "{mcp}"
     );
     ensure!(
