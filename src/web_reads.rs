@@ -139,9 +139,7 @@ pub(super) async fn objects(
             &workspace,
             &actor,
             key,
-            limit,
-            q.cursor.as_deref(),
-            data,
+            (limit, q.cursor.as_deref(), data, &[]),
         );
         return result(
             read.await

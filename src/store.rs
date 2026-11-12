@@ -51,7 +51,7 @@ mod history;
 pub(crate) mod public_ids;
 #[path = "store_references.rs"]
 mod references;
-pub use history::{HISTORY_LIMIT, mark_history, read_history};
+pub use history::{HISTORY_LIMIT, mark_history, read_history, read_history_lean};
 pub use references::workspace_references;
 
 pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa";
@@ -185,7 +185,7 @@ pub use read_scope::{Scope, read};
 
 #[path = "store_items.rs"]
 mod items;
-pub use items::{list, visible};
+pub use items::{list, list_page, visible};
 
 #[path = "search.rs"]
 pub mod search;

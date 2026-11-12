@@ -104,12 +104,14 @@ The HTTP search reply:
 | `total` / `next_cursor` | The count of ranked results: every text match and the 100 nearest vector matches, each once. `next_cursor` is the offset of the next page. Send it back as `cursor` |
 
 `joppa_search` gives at most 25 results a page, 10 by default, with `total` and
-`next_cursor` only. A result gives `address`, `title`, `revision`, `score`, `excerpt` and
-the `req` of a criterion. It has no `kind`, `id` or `system_id`, and `workspace` only with
+`next_cursor` only. A result gives `address`, `title`, `revision`, `excerpt` and
+the `req` of a criterion, and no `score`. It has no `kind`, `id` or `system_id`, and `workspace` only with
 `all_workspaces`. `historical`, `archived` and `exact_id` show only when they are true.
+`fields` keeps the address and the named keys: `title`, `excerpt`, `revision` and `status`
+(the tone). The MCP search counts no `indexed` or `embedded` rows.
 
 `excerpt` is the own text of the result: the first of its `body` and `text` that is not
-empty, at most 600 characters. The title and the parents stay out.
+empty, at most 600 characters over HTTP and 200 over MCP. The title and the parents stay out.
 `revision` is the revision of the result object, also for a criterion. `req` names the
 requirement of a criterion. `historical` is true when the result is not the current revision. `archived` is true
 when the object has no current document. When the provider does not answer a query,

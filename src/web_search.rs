@@ -59,6 +59,7 @@ pub(super) async fn search(
                 all_versions: q.all_versions.unwrap_or(false),
                 all_workspaces: q.all_workspaces.unwrap_or(false),
                 offset,
+                lean: false,
             },
         )
         .await,

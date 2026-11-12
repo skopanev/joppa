@@ -12,15 +12,14 @@ pub async fn read_objects(
 
 /// The members of relation `key` (src/relation_members.rs): at most `limit` present nodes
 /// after the address `cursor`, in address order. `data` also gives the data and the
-/// relations of each item. next_cursor is the bare address of the last item.
+/// relations of each item. Each of `keys` must be a relation of the registry, as `key`.
+/// next_cursor is the bare address of the last item.
 pub async fn relation_members(
     pool: &Pool,
     workspace: &str,
     actor: &str,
     key: &str,
-    limit: usize,
-    cursor: Option<&str>,
-    data: bool,
+    (limit, cursor, data, keys): (usize, Option<&str>, bool, &[String]),
 ) -> Result<Value> {
     ensure!((1..=25).contains(&limit), "limit must be 1 to 25");
     let scope = ObjectScope {
@@ -29,7 +28,7 @@ pub async fn relation_members(
         data,
         ..ObjectScope::default()
     };
-    let mut reply = read(pool, workspace, actor, &scope, Some(key)).await?;
+    let mut reply = read(pool, workspace, actor, &scope, Some((key, keys))).await?;
     if let Some((_, address)) = reply["next_cursor"]
         .as_str()
         .and_then(|c| c.split_once(':'))
@@ -45,8 +44,9 @@ async fn read(
     workspace: &str,
     actor: &str,
     scope: &ObjectScope<'_>,
-    in_relation: Option<&str>,
+    member_read: Option<(&str, &[String])>,
 ) -> Result<Value> {
+    let in_relation = member_read.map(|(key, _)| key);
     let (mut conn, workspace) = authorized(pool, workspace, actor).await?;
     let conn = conn
         .build_transaction()
@@ -71,9 +71,12 @@ async fn read(
         conn.commit().await?;
         return Ok(object);
     }
-    if let Some(key) = in_relation {
+    if let Some((key, keys)) = member_read {
+        let registry = registry(&conn, &workspace).await?;
         ensure!(
-            registry(&conn, &workspace).await?.contains_key(key),
+            std::iter::once(key)
+                .chain(keys.iter().map(String::as_str))
+                .all(|k| registry.contains_key(k)),
             "unknown link relation"
         );
     }

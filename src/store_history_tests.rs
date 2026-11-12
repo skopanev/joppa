@@ -48,3 +48,40 @@ fn a_mark_refuses_actor_at_16_nodes_and_repeats() {
             .is_ok()
     );
 }
+
+// ac:zwtluxs9
+#[test]
+fn a_mark_takes_position_or_1_to_25_positions_each_once() {
+    let many: Vec<i64> = (1..=26).collect();
+    for (input, error) in [
+        (
+            json!({"positions": [], "reason": "Read"}),
+            "positions holds 1 to 25 entries",
+        ),
+        (
+            json!({"positions": many, "reason": "Read"}),
+            "positions holds 1 to 25 entries",
+        ),
+        (
+            json!({"positions": [12, 12], "reason": "Read"}),
+            "each entry once",
+        ),
+        (
+            json!({"positions": [12, 0], "reason": "Read"}),
+            "journal position",
+        ),
+        (
+            json!({"position": 12, "positions": [12], "reason": "Read"}),
+            "send position or positions",
+        ),
+        (json!({"reason": "Read"}), "send position or positions"),
+    ] {
+        let message = parse_mark(&input).unwrap_err().to_string();
+        assert!(message.contains(error), "{input}: {message}");
+    }
+    let ten: Vec<i64> = (2..=11).collect();
+    assert!(parse_mark(&json!({"positions": ten, "reason": "Read"})).is_ok());
+    assert!(
+        parse_mark(&json!({"positions": (1..=25).collect::<Vec<i64>>(), "reason": "R"})).is_ok()
+    );
+}

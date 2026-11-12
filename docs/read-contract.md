@@ -200,11 +200,19 @@ A call of `joppa_tasks` is refused with `joppa_tasks was removed; use joppa_obje
 `joppa_history` and `joppa_search` lose the empty keys, `item_id` and the echo of the
 request:
 
-- `joppa_history` gives no `open`, `order`, `after`, `limit` or `signal`. A record of test
+- `joppa_history` gives no `open`, `order`, `after`, `limit` or `signal`, and it reads no
+  object signal. An entry has no `kind`, no `change` equal to its `op`, and each `at` in
+  whole seconds. With `open: true`, an entry has no `status`. A record of test
   results names itself only by its address `record/N`. Read the current status of an object
   with `joppa_objects`.
-- A `joppa_search` result gives `address`, `title`, `revision`, `score` and `excerpt`, the
-  first text of the object (`body` or `text`, at most 600 characters). It has no `kind`, `id` or `system_id`, no `req` on a requirement, and
+- `joppa_history_mark` takes `position`, or `positions` with 1 to 25 entries. A mark of
+  `positions` marks all entries or none, and its reply gives `positions` and no `reason`.
+- `joppa_list` gives `{id, title}` for each workspace, and `hidden: true` only for a
+  workspace that you hide. One statement reads the page and `total`.
+- A `joppa_search` result gives `address`, `title`, `revision` and `excerpt`, the
+  first text of the object (`body` or `text`, at most 200 characters). It has no `score`.
+  `fields` names the keys of each hit: `title`, `excerpt`, `revision` and `status` (the
+  tone). Another key is refused. It has no `kind`, `id` or `system_id`, no `req` on a requirement, and
   `workspace` only with `all_workspaces: true`. `historical`, `archived` and `exact_id`
   show only when they are `true`. The reply gives no `all_versions`, `all_workspaces`,
   `embedded`, `indexed`, `mode` or `semantic_status`, and `workspaces` only with
@@ -218,8 +226,10 @@ request:
 `{"workspace": "w", "relations_of": "domain:d", "direction": "incoming"}` gives the edges of
 `domain:d` in pages of 25 with `total` and `next_cursor`, in the order direction, relation,
 address. `direction`, `relation` and `kind` are optional filters. An item names its
-`direction` and `kind` only when the request did not send that filter. It always names its
-`relation` and `present`, and `when` and `revision` when they are set. `next_cursor` is
+`direction`, `relation` and `kind` only when the request did not send that filter. It names
+`present` only when it is `false`, and `when` and `revision` when they are set. `fields`
+keeps the address and the named keys: `title`, `kind`, `relation`, `direction`, `when`,
+`revision` and `present`. The HTTP item keeps every key. `next_cursor` is
 `direction/relation/address` of the last item. `links_of` is refused:
 `links_of was removed; use relations_of`.
 
@@ -228,6 +238,9 @@ address. `direction`, `relation` and `kind` are optional filters. An item names 
 `in_relation: "swap"` (HTTP `?in_relation=swap`) gives the present holders of the key, also with
 no edges, and the present targets of their edges, by 25 in address order with `total` and
 `next_cursor`. Other keys than `fields`, `limit`, `cursor`: refused. An unknown key: refused.
+Over MCP, `fields: ["title", "relations.swap"]` gives each item as
+`{address, title, relations: {swap: ...}}`, and a `relations.<key>` outside the registry is
+refused with `unknown link relation`.
 
 ## Writes
 
@@ -247,7 +260,12 @@ after the current files, newest detach first, each with `removed: true` and `rem
 The tree gives `schema` with its `revision`; send it with `set_tree_schema`. There is no
 `current_revision`, no write header (`actor`, `at`, `position`, `reason`) and no
 `status_rules` copy: each type names its `status`. A type gives `inbox` and `root` only when
-they are `true`. `workspace_key` shows only when the request named
+they are `true`. The MCP tree gives no `statuses` or `status_colors`, and `priorities` is the
+list that applies (`p0`, `p1`, `p2` by default), without `priority_levels`. A type gives no
+`color`, `badge`, `index` or `title_size`, and `title_max_length` only when it is not 128.
+`GET /api/workspaces/{w}/tree` keeps each of them. A type that `set_tree_schema` sends in
+`types` or `put_types` over MCP keeps the stored `color`, `badge`, `index` and `title_size`
+that it omits; null clears one. `workspace_key` shows only when the request named
 an alias of the workspace. `joppa_help` has no tree: `section: "tree"` is refused with
 `section tree was removed; use joppa_tree`. No reply gives `field_hint`.
 

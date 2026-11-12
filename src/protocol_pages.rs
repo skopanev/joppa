@@ -16,11 +16,16 @@ pub fn limit(a: &Value, default: usize) -> anyhow::Result<usize> {
     Ok((n as usize).min(rc::PAGE))
 }
 
-/// joppa_list: the workspaces that the actor can read, in pages of 25.
+/// joppa_list: the workspaces that the actor can read, in pages of 25, as {id, title} and
+/// `hidden: true` for a workspace that the actor hides (tac:tcospnl8).
 pub async fn list(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
-    let listed = store::list(pool, actor).await?;
-    let items = listed.as_array().cloned().unwrap_or_default();
-    rc::page(items, a["cursor"].as_str())
+    let start = match a["cursor"].as_str() {
+        Some(c) => c
+            .parse::<usize>()
+            .map_err(|_| anyhow::anyhow!("invalid cursor"))?,
+        None => 0,
+    };
+    store::list_page(pool, actor, start, rc::PAGE).await
 }
 
 /// joppa_search: one page of the ranked results, 10 by default. A hit gives no public ID,
@@ -44,10 +49,13 @@ pub async fn search(
         Some(c) => c.parse().map_err(|_| anyhow::anyhow!("invalid cursor"))?,
         None => 0,
     };
+    // A fields entry outside the hit keys is refused before the search runs.
+    joppa::mcp_lean::search_fields(a)?;
     let flags = store::search::Flags {
         all_versions: flag("all_versions")?,
         all_workspaces: flag("all_workspaces")?,
         offset,
+        lean: true,
     };
     let mut reply = store::search::find_with(
         pool,

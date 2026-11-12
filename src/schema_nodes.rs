@@ -50,3 +50,52 @@ pub fn requested_types(
     }
     Ok(merged)
 }
+
+/// The board fields of a type. The MCP tree does not give them (ac:bwc9qvme).
+pub const UI_FIELDS: [&str; 4] = ["color", "badge", "index", "title_size"];
+
+/// A `set_tree_schema` command over MCP (ac:iolhwin0): each type in `types` or `put_types` that
+/// omits a board field takes the value of the same type in `current`, the type map of the
+/// current schema. A field sent as null stays null and clears the value. The journal stores the
+/// filled command, so a replay gives the same revision.
+pub fn keep_ui_fields(command: &mut serde_json::Value, current: &serde_json::Value) {
+    for map in ["types", "put_types"] {
+        let sent = command.get_mut(map).and_then(|m| m.as_object_mut());
+        for (kind, node) in sent.into_iter().flatten() {
+            let (Some(node), Some(stored)) = (node.as_object_mut(), current[kind].as_object())
+            else {
+                continue;
+            };
+            for field in UI_FIELDS {
+                if let (false, Some(value)) = (node.contains_key(field), stored.get(field)) {
+                    node.insert(field.into(), value.clone());
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // ac:iolhwin0
+    #[test]
+    fn a_sent_type_keeps_the_board_fields_that_it_omits() {
+        let current =
+            json!({"ac":{"title":"AC","color":"#63756b","badge":"AC","index":3,"title_size":14}});
+        let mut command = json!({"op":"set_tree_schema","put_types":{
+            "ac":{"title":"AC","question":"Q","color":"#112233","badge":null},
+            "risk":{"title":"Risk"}}});
+        keep_ui_fields(&mut command, &current);
+        assert_eq!(
+            command["put_types"],
+            json!({"ac":{"title":"AC","question":"Q","color":"#112233","badge":null,"index":3,"title_size":14},
+                "risk":{"title":"Risk"}})
+        );
+        let mut whole = json!({"op":"set_tree_schema","types":{"ac":{"title":"AC"}}});
+        keep_ui_fields(&mut whole, &current);
+        assert_eq!(whole["types"], current);
+    }
+}

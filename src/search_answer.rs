@@ -41,7 +41,11 @@ pub(super) async fn answer(
     if semantic == "exact_match" && !rows.iter().any(|row| row.get::<_, bool>(4)) {
         return Ok(None);
     }
-    let (total, embedded) = candidates::counts(&tx, scope, flags.all_versions, &bound).await?;
+    // The MCP reply gives no index counters, so it does not count them (tac:s3ydcg5l).
+    let (total, embedded) = match flags.lean {
+        true => (0, 0),
+        false => candidates::counts(&tx, scope, flags.all_versions, &bound).await?,
+    };
     if semantic == "ready" && embedded < total {
         semantic = "pending";
     }
@@ -90,7 +94,8 @@ pub(super) async fn answer(
         .collect::<Vec<_>>();
     let rows = tx.query("SELECT s.canonical_id,k.kind,k.id,COALESCE(d.title,r.title),(CASE WHEN k.rev>=0 THEN v.document->'data' ELSE o.document->'data' END)::text,d.req,CASE WHEN k.rev>=0 THEN k.rev ELSE o.revision END,i.id,k.score,k.exact,k.item,
         k.rev>=0 AND o.revision IS DISTINCT FROM k.rev,
-        k.rev>=0 AND NOT EXISTS(SELECT 1 FROM joppa.search_documents x WHERE x.workspace=k.workspace AND x.kind=k.kind AND x.local_id=k.id)
+        k.rev>=0 AND NOT EXISTS(SELECT 1 FROM joppa.search_documents x WHERE x.workspace=k.workspace AND x.kind=k.kind AND x.local_id=k.id),
+        CASE WHEN o.present THEN (COALESCE(o.signal,'{}'::jsonb)||COALESCE(o.rollup->'signal','{}'::jsonb))->>'tone' ELSE $2::text END
       FROM jsonb_to_recordset($1::text::jsonb) AS k(workspace text,kind text,id text,rev int,score double precision,exact boolean,item boolean)
       JOIN joppa.search_state s ON s.workspace=k.workspace
       LEFT JOIN joppa.search_documents d ON k.rev<0 AND d.workspace=k.workspace AND d.kind=k.kind AND d.local_id=k.id
@@ -99,24 +104,30 @@ pub(super) async fn answer(
       LEFT JOIN joppa.object_revisions v ON k.rev>=0 AND v.workspace=k.workspace AND v.address=k.kind||':'||k.id AND v.revision=k.rev
       LEFT JOIN joppa.object_aliases a ON a.workspace=k.workspace AND a.target=k.kind||':'||k.id
       JOIN joppa.item_ids i ON i.workspace=k.workspace AND i.kind=COALESCE(split_part(a.address,':',1),k.kind) AND i.local_id=COALESCE(split_part(a.address,':',2),k.id) AND i.namespace=s.reference_prefix
-      ORDER BY k.score DESC,k.workspace,k.kind,k.id,k.rev", &[&serde_json::to_string(&selected)?]).await?;
+      ORDER BY k.score DESC,k.workspace,k.kind,k.id,k.rev", &[&serde_json::to_string(&selected)?, &crate::status_colors::ARCHIVED_TONE]).await?;
+    let length = if flags.lean { LEAN_EXCERPT } else { EXCERPT };
     let items = rows
         .iter()
         .map(|row| {
-            json!({
+            let mut item = json!({
                 "workspace": row.get::<_, String>(0),
                 "kind": row.get::<_, String>(1),
                 "id": row.get::<_, String>(2),
                 "system_id": if row.get(10) { query.to_owned() } else { row.get::<_, String>(7) },
                 "title": row.get::<_, String>(3),
-                "excerpt": excerpt(row.get::<_, Option<String>>(4)),
+                "excerpt": excerpt(row.get::<_, Option<String>>(4), length),
                 "req": row.get::<_, Option<String>>(5),
                 "revision": row.get::<_, Option<i32>>(6),
                 "score": row.get::<_, f64>(8),
                 "exact_id": row.get::<_, bool>(9),
                 "historical": row.get::<_, bool>(11),
                 "archived": row.get::<_, bool>(12),
-            })
+            });
+            // Only the MCP hit gives the status tone, for `fields` (ac:h0wbjo1a).
+            if flags.lean {
+                item["status"] = json!(row.get::<_, Option<String>>(13));
+            }
+            item
         })
         .collect::<Vec<_>>();
     let mut workspaces = vec![];

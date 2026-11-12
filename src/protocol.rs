@@ -116,19 +116,22 @@ async fn call(
         "joppa_attachments" => files::attachments(pool, actor, a).await,
         "joppa_record_results" => store::record_results(pool, field("workspace")?, actor, a).await,
         "joppa_history" => {
-            store::read_history(pool, field("workspace")?, actor, &pages::history_args(a)?).await
+            let args = pages::history_args(a)?;
+            store::read_history_lean(pool, field("workspace")?, actor, &args).await
         }
         "joppa_history_mark" => store::mark_history(pool, field("workspace")?, actor, a).await,
         "joppa_command" => {
             joppa::commands::reject_actor_field(a)?;
             // MCP hides the admin and UI operations; HTTP and the replay keep them.
             joppa::commands::mcp_admit([&a["command"]], false)?;
+            let mut command = a["command"].clone();
+            keep_ui_fields(pool, actor, a, [&mut command]).await?;
             store::execute_remote_input(
                 pool,
                 field("workspace")?,
                 actor,
                 field("request_id")?,
-                &a["command"],
+                &command,
             )
             .await
         }
@@ -141,6 +144,11 @@ async fn call(
             }
             let mut operations = a["operations"].clone();
             joppa::batch_defaults::apply(&a["defaults"], &mut operations)?;
+            let mut commands: Vec<&mut Value> = vec![];
+            for operation in operations.as_array_mut().into_iter().flatten() {
+                commands.extend(operation.get_mut("command"));
+            }
+            keep_ui_fields(pool, actor, a, commands).await?;
             let operations: Vec<store::BatchOperation> = serde_json::from_value(operations)?;
             joppa::commands::mcp_admit(operations.iter().map(|o| &o.command), true)?;
             store::execute_remote_batch(
@@ -184,4 +192,31 @@ async fn call(
         });
     }
     reply
+}
+
+/// A set_tree_schema over MCP keeps the board fields of each type that it omits (ac:iolhwin0).
+/// Only a command with set_tree_schema reads the current schema.
+async fn keep_ui_fields<'a>(
+    pool: &Pool,
+    actor: &str,
+    a: &Value,
+    commands: impl IntoIterator<Item = &'a mut Value>,
+) -> anyhow::Result<()> {
+    let mut current: Option<Value> = None;
+    for command in commands {
+        if command["op"] != "set_tree_schema" {
+            continue;
+        }
+        let types = match &current {
+            Some(types) => types,
+            None => {
+                let workspace = a["workspace"].as_str();
+                let workspace = workspace.ok_or_else(|| anyhow::anyhow!("missing workspace"))?;
+                let tree = store::tree_schema(pool, workspace, actor, None).await?;
+                current.insert(tree["schema"]["types"].clone())
+            }
+        };
+        joppa::schema_nodes::keep_ui_fields(command, types);
+    }
+    Ok(())
 }

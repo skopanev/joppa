@@ -22,7 +22,7 @@ pub(super) fn list() -> Vec<Value> {
         ),
         tool(
             "joppa_search",
-            "Find objects by words and meaning. A hit gives address, title, revision, score and excerpt.",
+            "Find objects by words and meaning. A hit gives address, title, revision and excerpt.",
             schemas::search(),
             json!(["workspace", "query"]),
         ),
@@ -52,9 +52,9 @@ pub(super) fn list() -> Vec<Value> {
         ),
         tool(
             "joppa_history_mark",
-            "Mark one open History entry processed. The server sets actor and time.",
-            json!({"workspace":w(),"position":{"type":"integer","minimum":1,"description":"History position"},"reason":text("short reason"),"nodes":{"type":"array","maxItems":15,"items":{"type":"string"},"description":"up to 15 nodes that the work changed"}}),
-            json!(["workspace", "position", "reason"]),
+            "Mark open History entries processed. The server sets actor and time.",
+            json!({"workspace":w(),"position":{"type":"integer","minimum":1,"description":"History position"},"positions":{"type":"array","description":"1 to 25 positions"},"reason":text("short reason"),"nodes":{"type":"array","maxItems":15,"items":{"type":"string"},"description":"nodes that the work changed"}}),
+            json!(["workspace", "reason"]),
         ),
         tool(
             "joppa_command",

@@ -5,9 +5,14 @@ use super::*;
 /// The text of every object type is body, see body_migration.
 const TEXT_FIELDS: [&str; 2] = ["body", "text"];
 
-/// The own text of a result: the first text field of its saved data, cut at 600
+/// The excerpt length of the HTTP search.
+pub(super) const EXCERPT: usize = 600;
+/// The excerpt length of the MCP search (ac:h0wbjo1a).
+pub(super) const LEAN_EXCERPT: usize = 200;
+
+/// The own text of a result: the first text field of its saved data, cut at `length`
 /// characters. The title, the other fields and the parents stay out.
-pub(super) fn excerpt(data: Option<String>) -> String {
+pub(super) fn excerpt(data: Option<String>, length: usize) -> String {
     let data: Value = data
         .and_then(|d| serde_json::from_str(&d).ok())
         .unwrap_or(Value::Null);
@@ -16,5 +21,5 @@ pub(super) fn excerpt(data: Option<String>) -> String {
         .filter_map(|field| data[*field].as_str())
         .find(|text| !text.trim().is_empty())
         .unwrap_or_default();
-    text.chars().take(600).collect()
+    text.chars().take(length).collect()
 }

@@ -85,6 +85,9 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         return members(pool, workspace, actor, a, key, fields).await;
     }
     if let Some(address) = a["relations_of"].as_str() {
+        if let Some(fields) = &fields {
+            joppa::mcp_shapes::link_fields(fields)?;
+        }
         let filter = |name: &str| match a.get(name) {
             None | Some(Value::Null) => Ok(None),
             Some(v) => v
@@ -181,13 +184,20 @@ async fn members(
     let limit = joppa::relation_members::page(number(a, "limit")?.map(|n| n as usize));
     let data = fields.as_deref().is_some_and(rc::needs_data);
     let cursor = a["cursor"].as_str();
-    let reply = store::relation_members(pool, workspace, actor, key, limit, cursor, data).await?;
+    // Each relations.<key> of fields names a relation of the registry (ac:ig3uv35d).
+    let keys = joppa::relation_members::relation_keys(fields.as_deref().unwrap_or_default());
+    let page = (limit, cursor, data, keys.as_slice());
+    let reply = store::relation_members(pool, workspace, actor, key, page).await?;
     if let Some(fields) = &fields {
         let items = reply["items"].as_array().into_iter().flatten();
         let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
         check(fields, false, &data)?;
     }
-    Ok(rc::list(reply, fields.as_deref()))
+    let mut reply = rc::list(reply, fields.as_deref());
+    if let Some(items) = reply["items"].as_array_mut() {
+        items.iter_mut().for_each(joppa::relation_members::nest);
+    }
+    Ok(reply)
 }
 
 #[path = "protocol_reads_address.rs"]

@@ -78,6 +78,7 @@ pub(super) fn search() -> Value {
             "cursor": text(CURSOR),
             "all_versions": {"type":"boolean","description":"also past revisions and archived (purple) objects"},
             "all_workspaces": {"type":"boolean","description":"each workspace that you can read"},
+            "fields": {"type":"array","description":"title, excerpt, revision, status"},
         }),
         false,
     )

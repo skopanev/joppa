@@ -81,6 +81,27 @@ pub async fn read_history(
     actor: &str,
     args: &Value,
 ) -> Result<Value> {
+    read(pool, workspace, actor, args, true).await
+}
+
+/// The MCP History read: the same page without the current status of each object, so it reads
+/// no object signal (tac:fhr6fazx).
+pub async fn read_history_lean(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    args: &Value,
+) -> Result<Value> {
+    read(pool, workspace, actor, args, false).await
+}
+
+async fn read(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    args: &Value,
+    with_signals: bool,
+) -> Result<Value> {
     let s = scope(args)?;
     let mut conn = pool.get().await?;
     let id = resolve_workspace(&**conn, workspace).await?;
@@ -120,25 +141,27 @@ pub async fn read_history(
         .iter()
         .filter_map(|item| item["address"].as_str().map(str::to_owned))
         .collect();
-    let signals: std::collections::BTreeMap<String, Value> = conn
-        .query(
-            "SELECT address, (COALESCE(signal,'{}'::jsonb)||COALESCE(rollup->'signal','{}'::jsonb))::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",
-            &[&id, &addresses],
-        )
-        .await?
-        .iter()
-        .map(|row| {
-            let signal = serde_json::from_str(row.get(1))?;
-            Ok((row.get(0), signal))
-        })
-        .collect::<Result<_>>()?;
+    let mut signals = std::collections::BTreeMap::<String, Value>::new();
+    if with_signals {
+        signals = conn
+            .query(
+                "SELECT address, (COALESCE(signal,'{}'::jsonb)||COALESCE(rollup->'signal','{}'::jsonb))::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",
+                &[&id, &addresses],
+            )
+            .await?
+            .iter()
+            .map(|row| {
+                let signal = serde_json::from_str(row.get(1))?;
+                Ok((row.get(0), signal))
+            })
+            .collect::<Result<_>>()?;
+    }
     conn.commit().await?;
     for (item, row) in items.iter_mut().zip(rows) {
-        let signal = item["address"]
-            .as_str()
-            .and_then(|a| signals.get(a))
-            .cloned();
-        item["signal"] = signal.unwrap_or(Value::Null);
+        if with_signals {
+            let signal = item["address"].as_str().and_then(|a| signals.get(a));
+            item["signal"] = signal.cloned().unwrap_or(Value::Null);
+        }
         match row.get::<_, Option<String>>(4) {
             Some(by) => {
                 item["status"] = json!("processed");

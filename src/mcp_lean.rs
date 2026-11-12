@@ -62,7 +62,7 @@ pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
         drop_value(&mut reply, &["target"], &args["target"]);
     }
     match tool {
-        "joppa_search" => search(&mut reply),
+        "joppa_search" => search(&mut reply, args),
         "joppa_tree" => tree(&mut reply, args),
         "joppa_command" | "joppa_batch" => {
             match reply.get_mut("results").and_then(Value::as_array_mut) {
@@ -79,20 +79,51 @@ pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
     reply
 }
 
-/// A search page: no index counters, and each hit names itself by its address.
-fn search(reply: &mut Value) {
+/// The keys that a search hit gives for `fields`; the address always comes.
+pub const SEARCH_FIELDS: [&str; 4] = ["title", "excerpt", "revision", "status"];
+
+/// Refuse a search `fields` entry outside SEARCH_FIELDS, before the search runs.
+pub fn search_fields(args: &Value) -> anyhow::Result<Option<Vec<String>>> {
+    let Some(fields) = crate::read_shapes::fields_argument(&args["fields"])? else {
+        return Ok(None);
+    };
+    if let Some(field) = fields.iter().find(|f| !SEARCH_FIELDS.contains(&f.as_str())) {
+        anyhow::bail!(
+            "unknown search field {field}; search takes title, excerpt, revision and status"
+        );
+    }
+    Ok(Some(fields))
+}
+
+/// A search page: no index counters, and each hit names itself by its address. A hit has no
+/// score. With `fields` it gives only its address and the named keys; without them it gives
+/// no status.
+fn search(reply: &mut Value, args: &Value) {
     drop_keys(reply, &["embedded", "indexed", "mode", "semantic_status"]);
+    let fields = search_fields(args).ok().flatten();
     each(reply, "items", |item| {
         if let (Some(kind), Some(id)) = (item["kind"].as_str(), item["id"].as_str()) {
             item["address"] = json!(format!("{kind}:{id}"));
         }
-        drop_keys(item, &["kind", "id"]);
+        drop_keys(item, &["kind", "id", "score"]);
         drop_value(item, &["archived", "historical", "exact_id"], &json!(false));
+        match &fields {
+            Some(fields) => {
+                if let Some(map) = object(item) {
+                    map.retain(|key, _| {
+                        ["address", "workspace"].contains(&key.as_str()) || fields.contains(key)
+                    });
+                }
+            }
+            None => drop_keys(item, &["status"]),
+        }
     });
 }
 
 /// The tree schema: one revision, no write header, no copy of the status rules of the types,
-/// and no false type flags. The workspace key shows only when the request named an alias.
+/// no colours and no false type flags (D2). `priorities` is the list that applies (D3). A type
+/// gives no board field and no default title limit. The workspace key shows only when the
+/// request named an alias.
 fn tree(reply: &mut Value, args: &Value) {
     drop_keys(reply, &["current_revision"]);
     drop_value(reply, &["workspace_key"], &args["workspace"]);
@@ -103,9 +134,19 @@ fn tree(reply: &mut Value, args: &Value) {
         schema,
         &["actor", "at", "position", "reason", "status_rules"],
     );
+    drop_keys(schema, &["status_colors", "statuses"]);
+    if let Some(map) = object(schema)
+        && let Some(levels) = map.remove("priority_levels")
+    {
+        map.insert("priorities".into(), levels);
+    }
+    let default_title = json!(crate::objects::TITLE_LENGTH_DEFAULT);
     if let Some(types) = schema.get_mut("types").and_then(Value::as_object_mut) {
         for kind in types.values_mut() {
             drop_value(kind, &["inbox", "root"], &json!(false));
+            drop_keys(kind, &crate::schema_nodes::UI_FIELDS);
+            let title = ["title_max_length", "title_preview_length"];
+            drop_value(kind, &title, &default_title);
         }
     }
 }

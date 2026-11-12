@@ -9,12 +9,14 @@ use crate::embeddings::{self, Embedder};
 use std::collections::BTreeMap;
 
 /// The scope of a search. Both flags are false by default. `offset` skips that many ranked
-/// results, so a cursor continues the same ranking.
+/// results, so a cursor continues the same ranking. `lean` is the MCP read (tac:s3ydcg5l): it
+/// counts no index rows, cuts each excerpt at 200 characters and gives the status tone.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Flags {
     pub all_versions: bool,
     pub all_workspaces: bool,
     pub offset: usize,
+    pub lean: bool,
 }
 
 pub async fn find(
@@ -110,4 +112,4 @@ use reply::answer;
 mod candidates;
 #[path = "search_excerpt.rs"]
 mod excerpt_text;
-use excerpt_text::excerpt;
+use excerpt_text::{EXCERPT, LEAN_EXCERPT, excerpt};
