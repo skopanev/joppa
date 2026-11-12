@@ -48,6 +48,7 @@ pub fn computed(t: &TreeType) -> BTreeMap<String, FieldType> {
     let references = t.references.iter().filter_map(|(field, r)| {
         let from = r.from.clone()?;
         let rule = FieldType {
+            board: false,
             kind: "list".into(),
             values: vec![],
             from: Some(from),

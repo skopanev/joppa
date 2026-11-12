@@ -21,6 +21,25 @@ pub struct FieldType {
     /// The source of the value: own (the default), children, links or parent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
+    /// True shows the field on the web card of an object. The MCP tree does not give it.
+    #[serde(
+        default,
+        skip_serializing_if = "std::ops::Not::not",
+        deserialize_with = "board_flag"
+    )]
+    pub board: bool,
+}
+
+/// The board flag: true, or false or null. A refusal names the flag.
+fn board_flag<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<bool, D::Error> {
+    match Value::deserialize(d)? {
+        Value::Bool(flag) => Ok(flag),
+        // A null clears the flag, as a null board field of a type does.
+        Value::Null => Ok(false),
+        other => Err(serde::de::Error::custom(format!(
+            "board is true or false, not {other}"
+        ))),
+    }
 }
 
 /// The sources of a field value.
@@ -118,4 +137,27 @@ pub fn enum_values(w: &crate::model::Workspace) -> Vec<crate::filter_dimensions:
             crate::filter_dimensions::Dimension { field, values }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // ac:sigd1mxp
+    #[test]
+    fn the_board_flag_is_a_boolean_and_false_is_not_written() {
+        let shown: FieldType = serde_json::from_value(json!({"type":"text","board":true})).unwrap();
+        assert!(shown.board);
+        assert_eq!(serde_json::to_value(&shown).unwrap()["board"], true);
+        let hidden: FieldType =
+            serde_json::from_value(json!({"type":"text","board":false})).unwrap();
+        assert_eq!(
+            serde_json::to_value(&hidden).unwrap(),
+            json!({"type":"text"})
+        );
+        let error = serde_json::from_value::<FieldType>(json!({"type":"text","board":"yes"}));
+        let error = error.unwrap_err().to_string();
+        assert!(error.contains("board"), "{error}");
+    }
 }

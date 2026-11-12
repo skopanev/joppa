@@ -56,8 +56,9 @@ pub const UI_FIELDS: [&str; 4] = ["color", "badge", "index", "title_size"];
 
 /// A `set_tree_schema` command over MCP (ac:iolhwin0): each type in `types` or `put_types` that
 /// omits a board field takes the value of the same type in `current`, the type map of the
-/// current schema. A field sent as null stays null and clears the value. The journal stores the
-/// filled command, so a replay gives the same revision.
+/// current schema. A field sent as null stays null and clears the value. A typed field that
+/// omits its board flag takes the flag of the same field of that type, and board: false clears
+/// it (ac:sigd1mxp). The journal stores the filled command, so a replay gives the same revision.
 pub fn keep_ui_fields(command: &mut serde_json::Value, current: &serde_json::Value) {
     for map in ["types", "put_types"] {
         let sent = command.get_mut(map).and_then(|m| m.as_object_mut());
@@ -69,6 +70,13 @@ pub fn keep_ui_fields(command: &mut serde_json::Value, current: &serde_json::Val
             for field in UI_FIELDS {
                 if let (false, Some(value)) = (node.contains_key(field), stored.get(field)) {
                     node.insert(field.into(), value.clone());
+                }
+            }
+            let fields = node.get_mut("fields").and_then(|f| f.as_object_mut());
+            for (name, rule) in fields.into_iter().flatten() {
+                let flag = &stored.get("fields").unwrap_or(&serde_json::Value::Null)[name]["board"];
+                if let (Some(rule), true) = (rule.as_object_mut(), flag.is_boolean()) {
+                    rule.entry("board").or_insert_with(|| flag.clone());
                 }
             }
         }
@@ -97,5 +105,22 @@ mod tests {
         let mut whole = json!({"op":"set_tree_schema","types":{"ac":{"title":"AC"}}});
         keep_ui_fields(&mut whole, &current);
         assert_eq!(whole["types"], current);
+    }
+
+    // ac:sigd1mxp
+    #[test]
+    fn a_sent_typed_field_keeps_its_board_flag_unless_it_sends_false() {
+        let current = json!({"ac":{"title":"AC","fields":{
+            "stage":{"type":"text","board":true},"env":{"type":"text","board":true},
+            "note":{"type":"text"}}}});
+        let mut command = json!({"op":"set_tree_schema","put_types":{"ac":{"title":"AC","fields":{
+            "stage":{"type":"text"},"env":{"type":"text","board":false},
+            "note":{"type":"text"},"risk":{"type":"text"}}}}});
+        keep_ui_fields(&mut command, &current);
+        assert_eq!(
+            command["put_types"]["ac"]["fields"],
+            json!({"stage":{"type":"text","board":true},"env":{"type":"text","board":false},
+                "note":{"type":"text"},"risk":{"type":"text"}})
+        );
     }
 }

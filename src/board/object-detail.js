@@ -33,8 +33,11 @@ export function fillCommonObject(body,detail){
   if(remote)body.append(remote);
   // The text of every object type is body.
   if(typeof d.body==='string'&&d.body.trim())body.append(markdownBlock(d.body,'object-content node-description'));
+  // A typed field of the schema shows only when its rule has board: true.
+  const typed=state.data.objectTypes?.[detail.kind]?.fields||{};
   for(const [key,value] of Object.entries(d)){
     if(['title','owner','body'].includes(key)||value===null||value===''||(Array.isArray(value)&&value.length===0))continue;
+    if(typed[key]&&typed[key].board!==true)continue;
     const field=E('div',undefined,'object-field');
     const refRule=state.data.objectTypes?.[detail.kind]?.references?.[key];
     field.append(E('small',refRule?refRule.title:key.replaceAll('_',' '),'type-label'));

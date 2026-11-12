@@ -127,8 +127,8 @@ fn search(reply: &mut Value, args: &Value) {
 
 /// The tree schema: one revision, no write header, no copy of the status rules of the types,
 /// no colours and no false type flags (D2). `priorities` is the list that applies (D3). A type
-/// gives no board field and no default title limit. The workspace key shows only when the
-/// request named an alias.
+/// gives no board field, no board flag of a typed field and no default title limit. The
+/// workspace key shows only when the request named an alias.
 fn tree(reply: &mut Value, args: &Value) {
     drop_keys(reply, &["current_revision"]);
     drop_value(reply, &["workspace_key"], &args["workspace"]);
@@ -150,6 +150,11 @@ fn tree(reply: &mut Value, args: &Value) {
         for kind in types.values_mut() {
             drop_value(kind, &["inbox", "root"], &json!(false));
             drop_keys(kind, &crate::schema_nodes::UI_FIELDS);
+            let fields = kind.get_mut("fields").and_then(Value::as_object_mut);
+            fields
+                .into_iter()
+                .flatten()
+                .for_each(|(_, f)| drop_keys(f, &["board"]));
             let title = ["title_max_length", "title_preview_length"];
             drop_value(kind, &title, &default_title);
         }
