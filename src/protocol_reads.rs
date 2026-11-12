@@ -67,6 +67,14 @@ fn number(a: &Value, key: &str) -> anyhow::Result<Option<u64>> {
 
 async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     let workspace = a["workspace"].as_str().context("missing workspace")?;
+    // count and group_by count the nodes of the list (src/node_counts.rs).
+    let sent = a.as_object().into_iter().flatten();
+    let sent = sent.filter(|(_, v)| !v.is_null()).map(|(k, _)| k.as_str());
+    if let Some(aggregate) = joppa::node_counts::Aggregate::parse(a, sent)? {
+        anyhow::ensure!(a["work_filter"].is_null(), joppa::removed_ops::WORK_FILTER);
+        let filter = joppa::node_filter::NodeFilter::parse(a)?;
+        return store::count_objects(pool, workspace, actor, &filter, &aggregate).await;
+    }
     let fields = read_shapes::fields_argument(&a["fields"])?;
     let revision = number(a, "revision")?
         .map(u32::try_from)

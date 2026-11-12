@@ -16,6 +16,9 @@ pub use cards::{CardNeeds, read_cards};
 #[path = "objects_compact_list.rs"]
 mod compact_rows;
 pub use compact_rows::compact_list;
+#[path = "objects_counts.rs"]
+mod counts;
+pub use counts::count_objects;
 #[path = "objects_link_groups.rs"]
 mod link_groups;
 pub use link_groups::link_page;

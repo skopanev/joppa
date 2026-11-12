@@ -1,5 +1,7 @@
 //! Read routes: the board, objects, History and the tree.
 use super::*;
+#[path = "web_counts.rs"]
+mod counts;
 #[path = "web_reads_many.rs"]
 mod many;
 
@@ -57,8 +59,25 @@ pub(super) struct ObjectQuery {
     /// Refused: the ready filter was removed.
     ready: Option<String>,
     data: Option<String>,
+    /// true gives only the total of the list (src/node_counts.rs).
+    count: Option<String>,
+    /// 1 to 3 comma-separated keys of the groups of the list.
+    group_by: Option<String>,
 }
 impl ObjectQuery {
+    /// The node filters, in the same form as joppa_objects.
+    fn filter(&self) -> anyhow::Result<joppa::node_filter::NodeFilter> {
+        joppa::node_filter::NodeFilter::parse_query(&[
+            ("parent", self.parent.as_deref()),
+            ("depth", self.depth.as_deref()),
+            ("kind", self.kind.as_deref()),
+            ("status", self.status.as_deref()),
+            ("owner", self.owner.as_deref()),
+            ("assignee", self.assignee.as_deref()),
+            ("ready", self.ready.as_deref()),
+            ("data", self.data.as_deref()),
+        ])
+    }
     /// The names of the keys that the request sends, outside fields, limit and cursor.
     fn other_keys(&self) -> Vec<&'static str> {
         let texts = [
@@ -100,6 +119,9 @@ pub(super) async fn objects(
     }
     if q.ready.is_some() {
         return result(Err(anyhow::anyhow!(joppa::removed_ops::READY_FILTER)));
+    }
+    if q.count.is_some() || q.group_by.is_some() {
+        return result(counts::read(&app.pool, &workspace, &actor, &q).await);
     }
     if let Some(address) = q.relations_of.as_deref() {
         return result(
@@ -153,17 +175,7 @@ pub(super) async fn objects(
                 .map(|reply| joppa::read_shapes::keep_item_fields(reply, fields.as_deref())),
         );
     }
-    // The node filters, in the same form as joppa_objects.
-    let filter = match joppa::node_filter::NodeFilter::parse_query(&[
-        ("parent", q.parent.as_deref()),
-        ("depth", q.depth.as_deref()),
-        ("kind", q.kind.as_deref()),
-        ("status", q.status.as_deref()),
-        ("owner", q.owner.as_deref()),
-        ("assignee", q.assignee.as_deref()),
-        ("ready", q.ready.as_deref()),
-        ("data", q.data.as_deref()),
-    ]) {
+    let filter = match q.filter() {
         Ok(filter) => filter,
         Err(e) => return result(Err(e)),
     };

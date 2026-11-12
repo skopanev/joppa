@@ -26,7 +26,7 @@ fn node_filters(mut schema: Value, full: bool) -> Value {
         "kind": one_or_list("type name or list"),
         "status": one_or_list(&format!("{TONES}; purple keeps archived nodes")),
         "owner": text("member ID in data.owner"),
-        "assignee": text("member ID or agent alias in data.assignee; \"\" for no assignee"),
+        "assignee": text("member ID or agent alias; \"\" for no assignee"),
         "data": {"type":"object","description":"containment filter on data, e.g. {\"stage\":\"done\"}"},
     });
     for (name, value) in filters.as_object().into_iter().flatten() {
@@ -55,14 +55,16 @@ pub(super) fn objects() -> Value {
                 "description":"items in a page: 1 to 25, or 1 to 100 with fields"},
             "cursor": text(CURSOR),
             "revision": {"type":"integer","minimum":1,"description":"one revision of address"},
-            "history": {"type":"boolean","description":"true gives the revision headers"},
+            "history": {"type":"boolean","description":"true: the revision headers"},
             "comments_cursor": text("next_cursor of a comment page"),
             "note_status": {"type":"string","enum":["unprocessed","processed"],"description":"Inbox state"},
-            "related_to": text("address: the objects linked to it"),
+            "related_to": text("address: objects linked to it"),
             "relations_of": text("address: its edges in pages"),
             "direction": {"type":"string","enum":["outgoing","incoming"],"description":"with relations_of"},
             "relation": text("with relations_of: one relation key"),
-            "in_relation": text("relation key: its nodes in pages"),
+            "in_relation": text("relation key: its nodes"),
+            "count": {"type":"boolean","description":"true: only {total}"},
+            "group_by": {"type":"array","description":"1 to 3 of kind, status, owner, assignee, <field>"},
         }),
         true,
     )

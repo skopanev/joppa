@@ -27,6 +27,7 @@ pub mod manual_checks;
 pub mod mcp_lean;
 pub mod mcp_shapes;
 pub mod model;
+pub mod node_counts;
 pub mod node_filter;
 pub mod note_parents;
 pub mod objects;
