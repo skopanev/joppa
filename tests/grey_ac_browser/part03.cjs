@@ -155,8 +155,10 @@ test('settings-in-name-menu-ac1: Settings in the name menu opens the settings pa
     for (const {width, height} of [{width: 1280, height: 800}, {width: 390, height: 844}]) {
       await page.setViewportSize({width, height});
       assert.equal((await page.goto(f.live.root + '/?workspace=' + encodeURIComponent(shared[0]))).status(), 200);
-      await page.locator('#identity').filter({hasText: /\S/}).waitFor();
+      // The board load closes the account menu, so open it only after the load ends.
+      await page.locator('body:not(.checking-session) #identity').filter({hasText: /\S/}).waitFor();
       await page.locator('#identity').click();
+      await page.locator('#account-menu[open]').waitFor();
       const items = page.locator('.account-options > *');
       // The menu opens after the click: read its items once they show.
       await items.last().waitFor();
