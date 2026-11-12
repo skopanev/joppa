@@ -82,8 +82,8 @@ async fn one_rollup_gives_red_orange_purple_green_on_every_level() -> Result<()>
         .await?
         .map_err(anyhow::Error::msg)?;
     ensure!(tone(&w, "ac:b").await? == "purple" && tone(&w, "requirement:r").await? == "green");
-    // A depends_on edge changes no tone. The target ac:c is under its own root requirement:q,
-    // so it does not count for R.
+    // A new depends_on edge resets the test nodes of ac:a, so ac:a and R are blue, not yellow.
+    // The target ac:c is under its own root requirement:q, so it does not count for R.
     let a = w.object("ac:a").await?;
     for command in [
         json!({"op":"save_object","kind":"requirement","id":"q","revision":0,"parent":null,
@@ -99,7 +99,7 @@ async fn one_rollup_gives_red_orange_purple_green_on_every_level() -> Result<()>
             .map_err(anyhow::Error::msg)?;
     }
     let pair = (tone(&w, "ac:a").await?, tone(&w, "requirement:r").await?);
-    ensure!(pair == ("green".into(), "green".into()), "{pair:?}");
+    ensure!(pair == ("blue".into(), "blue".into()), "{pair:?}");
     // A failure beats every other tone.
     w.recorded(&"b".repeat(40), json!([{"test":ONE,"status":"fail"}]))
         .await?;
