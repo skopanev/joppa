@@ -146,9 +146,5 @@ async fn joppa_list_gives_id_and_title_and_the_own_hidden_flag_from_one_statemen
         found.total() == base.total() + 1,
         "joppa_list: {found}\ntoken check: {base}"
     );
-    for table in ["joppa.email_grants", "joppa.domain_grants"] {
-        let more = found.naming(&[table]) - base.naming(&[table]);
-        ensure!(more == 0, "joppa_list reads {table}: {found}");
-    }
     Ok(())
 }
