@@ -78,8 +78,9 @@ pub async fn find_with(
 }
 
 /// The search of a read key: no actor, and only the addresses of `within` are candidates. It
-/// gives the addresses of at most `limit` results in the ranking of find_with.
-pub async fn find_within(
+/// gives the addresses of at most `limit` results in the ranking of find_with. It skips the
+/// access check, so only the crate calls it.
+pub(crate) async fn find_within(
     pool: &Pool,
     workspace: &str,
     query: &str,
