@@ -22,6 +22,23 @@ fn scalar_values_match_one_wanted_value_or_a_list() {
 }
 
 #[test]
+fn large_integers_compare_exactly() {
+    assert!(!yes(
+        json!(9007199254740992_i64),
+        json!(9007199254740993_i64)
+    ));
+    assert!(!yes(
+        json!(18446744073709551614_u64),
+        json!(18446744073709551615_u64)
+    ));
+    assert!(yes(
+        json!(18446744073709551615_u64),
+        json!([1, 18446744073709551615_u64])
+    ));
+    assert!(!yes(json!(-1), json!(18446744073709551615_u64)));
+}
+
+#[test]
 fn a_star_on_either_side_matches_any_value() {
     assert!(yes(json!("x"), json!("*")));
     assert!(yes(json!("*"), json!("y")));

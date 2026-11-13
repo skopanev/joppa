@@ -38,10 +38,15 @@ pub fn field_matches(value: Option<&Value>, wanted: &[Value]) -> bool {
     }
 }
 
-/// JSON equality, with numbers compared by value, so 3 equals 3.0.
+/// JSON equality, with numbers compared by value, so 3 equals 3.0. Two integers compare
+/// exactly, so a large integer never equals its float neighbour.
 fn same(a: &Value, b: &Value) -> bool {
-    match (a.as_f64(), b.as_f64()) {
-        (Some(x), Some(y)) => x == y,
+    let int = |n: &serde_json::Number| n.as_i64().map(i128::from).or(n.as_u64().map(i128::from));
+    match (a, b) {
+        (Value::Number(x), Value::Number(y)) => match (int(x), int(y)) {
+            (Some(x), Some(y)) => x == y,
+            _ => x.as_f64() == y.as_f64(),
+        },
         _ => a == b,
     }
 }
