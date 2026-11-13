@@ -45,7 +45,10 @@ pub async fn read_data(
     let w = state_rows::outline(&*tx, workspace).await?;
     let schema = crate::objects::schema(&w);
     let plan = request.plan(&schema.types)?;
-    let (public, position) = head(&*tx, workspace).await?;
+    let (public, _) = head(&*tx, workspace).await?;
+    // The position is the last journal position of the workspace.
+    let sql = "SELECT COALESCE(max(position),0) FROM joppa.events WHERE workspace=$1";
+    let position: i64 = tx.query_one(sql, &[&workspace]).await?.get(0);
     let root = match &plan.root {
         None => None,
         Some(key) => match tx.query_opt(ROOT, &[&workspace, key]).await? {
