@@ -8,6 +8,7 @@ Read [objects](objects.md) before you edit documents. Write new text by the
 - MCP: `POST /mcp` over HTTPS. The actor comes from OAuth or a private service credential of the server. An agent names itself with `alias`.
 - Commands: `POST /api/workspaces/{workspace}/commands` with `{"request_id":"unique-id","command":{...}}` and `Authorization: Bearer <token>`.
 - Reads: `GET /api/workspaces`, `GET /api/workspaces/{workspace}` and the routes `board`, `objects`, `search`, `history`, `tree` and `dependencies` under it.
+- Data reads: `POST /api/data` with a workspace read key. See [read key](#read-key) and [data reads](#data-reads).
 - Counts: `GET /api/workspaces/{workspace}/objects?count=true` gives `{"total": N}`, and `?group_by=kind,status` gives `{"total": N, "groups": [...]}`, with the node filters. See [counts](read-contract.md#counts).
 - Files: `POST /api/workspaces/{workspace}/blobs` takes a raw body of 50 MiB at most and answers `{hash,size}`.
 - Upload links: `PUT /api/uploads/{token}` takes the raw bytes of one `joppa_attach` call with `upload: true`. The signed link is the credential, so the request needs no token or cookie. The server checks the signature, the lifetime, the access and the size in this order. Then it stores the bytes and answers with the `joppa_attach` reply. The errors are:
@@ -198,6 +199,47 @@ The server command line takes explicit local IDs.
 `joppa_search` takes `workspace`, `query`, `limit` (1 to 25, default 10), `all_versions`,
 `all_workspaces` and the [node filters](read-contract.md#node-filters) of `joppa_objects`. `GET /api/workspaces/{workspace}/search` takes `q`,
 `cursor` and the same filters. See [search](search.md), also given by `joppa_help` with `section: "search"`.
+
+## Read key
+
+A workspace has 0 or 1 read key. A key is `jpr_` and 64 lowercase hex characters. The server
+keeps only the SHA-256 digest of the key. A human member manages the key in the Read key
+section of Settings, with a browser session and no Authorization header:
+
+- `GET /api/workspaces/{workspace}/read-key` gives `{"active", "created_at"}` and never the key.
+- `POST /api/workspaces/{workspace}/read-key` makes a new key and gives `{"key", "created_at"}` once. The previous key stops at once.
+- `POST /api/workspaces/{workspace}/read-key/revoke` deletes the key and gives `{"active": false}`.
+
+These routes need the same-origin `Origin` header for a POST. A request with an
+Authorization header gets 401. A person who is not a human member gets 403.
+
+## Data reads
+
+`POST /api/data` with `Authorization: Bearer jpr_...` reads the workspace of the key. It is
+the only route that takes a read key. `/mcp` and every other `/api/*` route give 401 to a read
+key. The route writes no journal event. A missing, malformed, unknown or revoked key gets 401.
+
+The body is a JSON object. Each key is optional, and an unknown key gets 400:
+
+- `workspace`: the ID or an alias. Another workspace than the workspace of the key gets 403.
+- `root`: an address or a public item ID of a live node. Without a live node the reply is 404. Without `root` the walk starts at each live root.
+- `kind`: a type name or a list of type names of the schema. It selects the types of `items` and does not stop the walk.
+- `filter`: an object of field names and wanted values. A field is a typed field of the schema, `owner` or `assignee`. A value is one value or a non-empty list, of the JSON type of the field.
+- `query`: 1 to 2000 characters. The hybrid search ranks only the nodes of the walk.
+- `fields`: a non-empty list of `title`, `body`, `owner`, `assignee`, `parent`, `status` and the typed fields of the schema. The default is `["title", "body"]`.
+- `limit`: 1 to 25 with `query`, and the default is 10. Without `query` it is 1 to 1000, and without a value the reply has each node of the walk.
+- `max_chars`: 1 to 262144, and the default is 32768.
+
+The walk goes down the live tree in tree order: the type index, the stored order of the
+siblings, then the ID. It skips an archived node and a node that fails `filter`, with the
+nodes below them. A node passes a filter field when its value is absent, null, `""` or `[]`.
+It also passes when one side is or holds `"*"`, when its value is a wanted value, or when its
+list shares a wanted value. The data has the computed fields too.
+
+The reply is `{"workspace", "position", "items"}`. Each item has `address`, `kind`,
+`revision` and each field of `fields` that is not null. A reply of more than `max_chars`
+characters gets 422 with `response is N characters, max_chars is M`. The route never cuts the
+items. A wrong field name, value type or range gets 400.
 
 ## Browser authentication
 
