@@ -53,8 +53,9 @@ async fn kind_type_b_selects_only_the_kept_type_b_nodes_in_tree_order() -> Resul
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn without_a_root_the_walk_starts_at_every_root_and_kind_does_not_stop_it() -> Result<()> {
     with_key(tree, async |w, key| {
+        // The roots have no stored order, so box:other comes before box:root by ID.
         let body = json!({"kind":"type_a","filter":{"env":"prod"}});
-        lists(w, key, body, &["type_a:a3", "type_a:a1", "type_a:c1"]).await
+        lists(w, key, body, &["type_a:c1", "type_a:a3", "type_a:a1"]).await
     })
     .await
 }

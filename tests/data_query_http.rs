@@ -41,7 +41,8 @@ async fn a_query_finds_only_the_walked_node_and_no_archived_or_other_branch() ->
         searched(w, "zebrafish", 25, 3).await?;
         let body = json!({"root":"box:root","filter":{"env":"prod"},"query":"zebrafish"});
         let found = addresses(&read(w, key, body).await?);
-        ensure!(found == ["type_a:a1"], "{found:?}");
+        // The search text of a node holds its ancestors, so b1 matches through a1.
+        ensure!(found == ["type_a:a1", "type_b:b1"], "{found:?}");
         Ok(())
     })
     .await

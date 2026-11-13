@@ -132,8 +132,8 @@ async fn a_computed_lane_and_owner_and_assignee_match_as_text() -> Result<()> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_node_with_an_absent_null_empty_or_empty_list_value_matches_each_filter() -> Result<()> {
     with_key(tree, async |w, key| {
-        // type_a:blank has area "", tags [] and retries null, and no strict, env, lane, owner
-        // or assignee.
+        // type_a:blank has area "", tags [] and retries null, and no strict, env, lane or
+        // assignee. Every node has the required owner alex, so owner is never absent.
         let filters = [
             json!({"area":"y"}),
             json!({"tags":["ui"]}),
@@ -141,7 +141,6 @@ async fn a_node_with_an_absent_null_empty_or_empty_list_value_matches_each_filte
             json!({"strict":false}),
             json!({"env":"dev"}),
             json!({"lane":"slow"}),
-            json!({"owner":"another-member"}),
             json!({"assignee":"another-member"}),
         ];
         let list: Vec<_> = filters

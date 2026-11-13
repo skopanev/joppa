@@ -28,10 +28,11 @@ pub async fn put_types(w: &World, put: Value) -> Result<()> {
     Ok(())
 }
 
-/// Save a new node at `address` under `parent` with the data `data` and the title of its id.
+/// Save a new node at `address` under `parent` with the data `data`, the title of its id and
+/// the human owner alex.
 pub async fn save(w: &World, address: &str, parent: Option<&str>, data: Value) -> Result<()> {
     let (kind, id) = address.split_once(':').context("address")?;
-    let mut all = json!({"title": id});
+    let mut all = json!({"title": id, "owner": "alex"});
     for (k, v) in data.as_object().into_iter().flatten() {
         all[k] = v.clone();
     }
