@@ -45,6 +45,10 @@ try{
 #delete-confirm[hidden]{display:none}
 #delete-references{margin:0 0 .6em;color:var(--text)}
 #delete-references ul{margin:.3em 0;padding-left:1.2em}
+/* The read key row wraps its buttons at a narrow width. The new key shows once. */
+#read-key-actions{flex-wrap:wrap}
+#read-key-actions[hidden],#read-key-secret[hidden]{display:none}
+#read-key-value{flex:1;min-width:0;overflow-wrap:anywhere;user-select:all;font-family:ui-monospace,monospace;font-size:.85em}
 
 .back-link{color:var(--link);text-decoration:none;white-space:nowrap}
 /* Rename and New workspace sit next to the workspace drop-down, as header controls. */
@@ -88,6 +92,18 @@ try{
   <div id="workspace-panel" hidden>
     <label class="hide-check"><input id="hide-workspace" type="checkbox"> Hide from my list</label>
     <p id="hide-error" role="alert"></p>
+    <section id="read-key-panel" aria-labelledby="read-key-title">
+      <h2 id="read-key-title">Read key</h2>
+      <p>A read key reads this workspace with <code>POST /api/data</code> only. It cannot write.</p>
+      <div id="read-key-actions" class="row">
+        <button id="read-key-create" type="button" hidden>Create read key</button>
+        <button id="read-key-regenerate" type="button" hidden>Regenerate read key</button>
+        <button id="read-key-revoke" type="button" hidden>Revoke read key</button>
+      </div>
+      <p id="read-key-note" hidden>Copy the key now. The page shows it only once.</p>
+      <div id="read-key-secret" class="row" hidden><code id="read-key-value"></code><button id="read-key-copy" type="button">Copy</button></div>
+      <p id="read-key-error" role="alert"></p>
+    </section>
     <section id="people-panel" aria-labelledby="people-title">
       <h2 id="people-title">People</h2>
       <ul id="workspace-people" aria-label="People with access"></ul>

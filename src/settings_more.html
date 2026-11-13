@@ -44,7 +44,49 @@ const show=()=>{
   $('hide-workspace').checked=workspaces.some(w=>w.id===id&&w.hidden===true);
   for(const id of ['hide-error','grant-error','rename-error','delete-error'])$(id).textContent='';
   closeDelete();
+  // Only a switch of the workspace reads the read key again, and it clears a shown key.
+  if(id!==keyWorkspace){keyWorkspace=id;loadKey();}
 };
+// The read key of the selected workspace. A new key shows once. A switch or a revoke clears it.
+let keyWorkspace=null,keyView=0;
+const keyUrl=id=>'/api/workspaces/'+encodeURIComponent(id)+'/read-key';
+const showKey=(active,secret)=>{
+  $('read-key-create').hidden=active!==false;
+  $('read-key-regenerate').hidden=$('read-key-revoke').hidden=active!==true;
+  $('read-key-value').textContent=secret||'';$('read-key-secret').hidden=$('read-key-note').hidden=!secret;
+};
+const loadKey=async()=>{
+  const id=select.value,view=++keyView;
+  showKey(null);$('read-key-error').textContent='';
+  if(!id)return;
+  try{
+    const value=await send(keyUrl(id),'GET',undefined,'Could not read the read key.');
+    if(view===keyView)showKey(value.active);
+  }catch(e){if(view===keyView)$('read-key-error').textContent=e.message;}
+};
+// Create and Regenerate store a new key. The previous key stops at once.
+const makeKey=async button=>{
+  const id=select.value,view=++keyView;
+  busy(button,true);$('read-key-error').textContent='';
+  try{
+    const value=await send(keyUrl(id),'POST',undefined,'Could not create the read key.');
+    if(view===keyView)showKey(true,value.key);
+  }catch(e){if(view===keyView)$('read-key-error').textContent=e.message;}
+  busy(button,false);
+};
+$('read-key-create').onclick=()=>makeKey($('read-key-create'));
+$('read-key-regenerate').onclick=()=>makeKey($('read-key-regenerate'));
+$('read-key-revoke').onclick=async()=>{
+  const button=$('read-key-revoke'),id=select.value,view=++keyView;
+  busy(button,true);showKey(true);$('read-key-error').textContent='';
+  try{
+    await send(keyUrl(id)+'/revoke','POST',undefined,'Could not revoke the read key.');
+    if(view===keyView)showKey(false);
+  }catch(e){if(view===keyView)$('read-key-error').textContent=e.message;}
+  busy(button,false);
+};
+$('read-key-copy').onclick=()=>navigator.clipboard.writeText($('read-key-value').textContent)
+  .catch(()=>{$('read-key-error').textContent='Could not copy the read key.';});
 // The confirmation names the selected workspace, and Delete for everyone waits for its exact title.
 const confirmButton=$('delete-confirm-button'),deleteTitle=$('delete-title');
 const selectedTitle=()=>select.selectedOptions[0]?.text??'';
