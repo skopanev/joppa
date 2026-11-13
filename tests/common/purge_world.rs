@@ -99,6 +99,8 @@ pub async fn workspace(
     }
     store::grant_email(pool, &ws, "owner", "lena@example.org").await?;
     store::grant_domain(pool, &ws, "owner", "example.net").await?;
+    let digest = joppa::digest_hex::sha256_hex(uuid::Uuid::new_v4().as_bytes());
+    store::set_read_key(pool, &ws, "owner", &digest).await?;
     store::record_results(
         pool,
         &ws,
