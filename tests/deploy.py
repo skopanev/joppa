@@ -167,6 +167,21 @@ sys.exit(1 if action == os.environ.get('HANDOVER_FAIL') else 0)
                 self.assertEqual(order.count('migrate'), 1)
                 self.assertEqual(order.count('restart joppa'), 1)
 
+    def test_installer_grants_the_read_key_table_to_the_runtime_role(self):
+        """Send the grant step to a fake psql and read the SQL that it gets."""
+        installer = (SOURCE / 'server/install.sh').read_text()
+        start = installer.index("if ! runuser -u postgres -- psql")
+        end = installer.index('systemctl restart joppa', start)
+        received = self.root / 'grant-sql'
+        runuser = self.bin / 'runuser'
+        runuser.write_text('#!/bin/sh\ncat > "$GRANT_SQL"\n')
+        runuser.chmod(0o755)
+        result = subprocess.run(['bash', '-c', 'set -euo pipefail\n'+installer[start:end]],
+            env={**self.env, 'GRANT_SQL': str(received)}, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        grants = [line for line in received.read_text().splitlines() if 'workspace_read_keys' in line]
+        self.assertEqual(grants, ['GRANT UPDATE, DELETE ON joppa.workspace_read_keys TO joppa_app;'])
+
     def test_installer_dumps_the_database_before_the_stop(self):
         """[ac:9jjb6xjt] Keep a checked dump and a Spaces backup before the migration."""
         installer = (SOURCE / 'server/install.sh').read_text()

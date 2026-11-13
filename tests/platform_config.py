@@ -190,6 +190,16 @@ class PlatformConfig(unittest.TestCase):
         self.assertLess(text.index("systemctl stop joppa"), text.index("mv /opt/joppa/bin/joppa.next"))
         self.assertLess(text.index("/opt/joppa/bin/joppa migrate"), text.index("systemctl restart joppa\nhealthy"))
 
+    def test_install_grants_update_and_delete_on_the_read_key_table(self):
+        """The runtime role regenerates and revokes a read key: it needs UPDATE and DELETE."""
+        migration = (SOURCE / "migrations" / "068_workspace_read_keys.sql").read_text()
+        self.assertIn("CREATE TABLE IF NOT EXISTS joppa.workspace_read_keys", migration)
+        privileges = set()
+        for grant in re.findall(r"^GRANT ([A-Z, ]+) ON ([a-z_., ]+) TO joppa_app;$", read("install.sh"), re.M):
+            if "joppa.workspace_read_keys" in [t.strip() for t in grant[1].split(",")]:
+                privileges |= {p.strip() for p in grant[0].split(",")}
+        self.assertTrue({"UPDATE", "DELETE"} <= privileges, privileges)
+
     def test_install_gives_each_source_file_a_time_after_the_last_build(self):
         text = read("install.sh")
         line = next(l for l in text.splitlines() if l.startswith("find /opt/joppa/src "))
