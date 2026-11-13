@@ -195,6 +195,13 @@ mod search_revisions;
 #[path = "workspace_prefix.rs"]
 pub mod workspace_prefix;
 
+#[path = "store_read_keys.rs"]
+mod read_keys;
+pub use read_keys::{read_key, read_key_workspace, revoke_read_key, set_read_key};
+#[path = "store_data.rs"]
+mod data;
+pub use data::read_data;
+
 #[path = "store_blobs.rs"]
 mod blobs;
 use blobs::remove_folder;

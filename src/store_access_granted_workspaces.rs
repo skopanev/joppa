@@ -179,7 +179,7 @@ pub async fn remove_member(pool: &Pool, workspace: &str, actor: &str, id: &str) 
 
 /// The workspace and its current state when `actor` is a human member of it. Any other member
 /// gets the human member rule, and an outsider gets "Workspace not found".
-pub(super) async fn human_member_of(
+pub(crate) async fn human_member_of(
     pool: &Pool,
     workspace: &str,
     actor: &str,

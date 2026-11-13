@@ -149,6 +149,12 @@ use commands::*;
 #[path = "web_login.rs"]
 mod login;
 use login::*;
+#[path = "web_read_keys.rs"]
+mod read_keys;
+use read_keys::*;
+#[path = "web_data.rs"]
+mod data_route;
+use data_route::*;
 #[path = "web_server.rs"]
 mod server;
 pub use server::serve;

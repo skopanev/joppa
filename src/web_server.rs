@@ -12,6 +12,12 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
     ensure!(!identities.is_empty(), "identity file is empty");
     for (token, actor) in &identities {
         ensure!(token.len() >= 24, "tokens must have at least 24 characters");
+        // A read key never names an actor: only POST /api/data takes it.
+        ensure!(
+            !token.starts_with(joppa::data_request::KEY_PREFIX),
+            "a token must not start with {}",
+            joppa::data_request::KEY_PREFIX
+        );
         joppa::commands::identifier(actor)?;
     }
     let login = web_auth::Login::from_env()?;
@@ -107,6 +113,15 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces/{workspace}/rename", post(rename_workspace))
         .route("/api/workspaces/{workspace}/hide", post(hide_workspace))
         .route("/api/workspaces/{workspace}/delete", post(delete_workspace))
+        .route(
+            "/api/workspaces/{workspace}/read-key",
+            get(read_key).post(create_read_key),
+        )
+        .route(
+            "/api/workspaces/{workspace}/read-key/revoke",
+            post(revoke_read_key),
+        )
+        .route("/api/data", post(data))
         .route(
             "/api/workspaces/{workspace}/references",
             get(workspace_references),

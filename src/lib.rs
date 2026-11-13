@@ -9,6 +9,8 @@ pub mod commands;
 pub mod computed_fields;
 pub mod consumer_drops;
 pub mod consumer_migration;
+pub mod data_request;
+pub mod data_walk;
 pub mod decision_migration;
 pub mod digest_hex;
 pub mod embeddings;
