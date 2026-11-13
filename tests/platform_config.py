@@ -221,6 +221,17 @@ class PlatformConfig(unittest.TestCase):
             for name in ("src/lib.rs", "Cargo.toml"):
                 self.assertGreater(files[name].stat().st_mtime, binary, name)
 
+    def test_install_grants_joppa_app_update_and_delete_on_the_read_key_table(self):
+        """[ac:03jz22j6] SELECT and INSERT come from the grant on all tables."""
+        sql = re.search(r"<<'SQL'\n(.*?)\nSQL\n", read("install.sh"), re.S)
+        self.assertTrue(sql, "install.sh has no grant block")
+        grants = {}
+        for rights, target in re.findall(r"^GRANT ([A-Z, ]+) ON (.+) TO joppa_app;$", sql.group(1), re.M):
+            for table in target.split(","):
+                grants.setdefault(table.strip(), set()).update(r.strip() for r in rights.split(","))
+        self.assertLessEqual({"UPDATE", "DELETE"}, grants.get("joppa.workspace_read_keys", set()))
+        self.assertLessEqual({"SELECT", "INSERT"}, grants.get("ALL TABLES IN SCHEMA joppa", set()))
+
     def test_the_binary_is_rust_2024_axum_0_8_with_embedded_markdown_libraries(self):
         cargo = (SOURCE / "Cargo.toml").read_text()
         for line in ('edition = "2024"', 'rust-version = "1.90"', 'axum = "0.8"', 'deadpool-postgres = "0.14"',

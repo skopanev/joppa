@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -167,20 +168,26 @@ sys.exit(1 if action == os.environ.get('HANDOVER_FAIL') else 0)
                 self.assertEqual(order.count('migrate'), 1)
                 self.assertEqual(order.count('restart joppa'), 1)
 
-    def test_installer_grants_the_read_key_table_to_the_runtime_role(self):
-        """Send the grant step to a fake psql and read the SQL that it gets."""
+    def test_installer_sends_the_read_key_table_grant_to_psql(self):
+        """[ac:03jz22j6] Grant joppa_app UPDATE and DELETE on joppa.workspace_read_keys."""
         installer = (SOURCE / 'server/install.sh').read_text()
-        start = installer.index("if ! runuser -u postgres -- psql")
-        end = installer.index('systemctl restart joppa', start)
-        received = self.root / 'grant-sql'
-        runuser = self.bin / 'runuser'
-        runuser.write_text('#!/bin/sh\ncat > "$GRANT_SQL"\n')
-        runuser.chmod(0o755)
-        result = subprocess.run(['bash', '-c', 'set -euo pipefail\n'+installer[start:end]],
-            env={**self.env, 'GRANT_SQL': str(received)}, text=True, capture_output=True)
+        start = installer.index('if systemctl is-active --quiet joppa; then')
+        script = installer[start:installer.index('healthy=false', start)].replace('/opt/joppa/bin', str(self.bin))
+        sent = self.root / 'grants.sql'
+        for tool, body in (('systemctl', ''), ('runuser', "if 'psql' in sys.argv: open(os.environ['GRANTS'], 'w').write(sys.stdin.read())")):
+            (self.bin / tool).write_text('#!/usr/bin/env python3\nimport os, sys\n' + body + '\n')
+            (self.bin / tool).chmod(0o755)
+        (self.bin / 'joppa.next').write_text('fixture release')
+        result = subprocess.run(['bash', '-c', 'set -euo pipefail\n' + script], env={**self.env, 'GRANTS': str(sent)},
+                                text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        grants = [line for line in received.read_text().splitlines() if 'workspace_read_keys' in line]
-        self.assertEqual(grants, ['GRANT UPDATE, DELETE ON joppa.workspace_read_keys TO joppa_app;'])
+        rights = set()
+        for line in sent.read_text().splitlines():
+            match = re.match(r'GRANT ([A-Z, ]+) ON (.+) TO joppa_app;$', line)
+            if match and 'joppa.workspace_read_keys' in [t.strip() for t in match.group(2).split(',')]:
+                rights.update(r.strip() for r in match.group(1).split(','))
+        self.assertLessEqual({'UPDATE', 'DELETE'}, rights)
+        self.assertIn('GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA joppa TO joppa_app;', sent.read_text())
 
     def test_installer_dumps_the_database_before_the_stop(self):
         """[ac:9jjb6xjt] Keep a checked dump and a Spaces backup before the migration."""
