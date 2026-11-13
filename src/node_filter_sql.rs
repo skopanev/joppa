@@ -92,6 +92,20 @@ pub async fn bind(
 }
 
 impl Bound {
+    /// The clause that keeps only `addresses` of the workspace and applies no other filter.
+    pub fn within(workspace: &str, addresses: Vec<String>) -> Self {
+        Bound {
+            workspace: workspace.to_owned(),
+            descendants: Some(addresses),
+            roots: false,
+            filter: NodeFilter::default(),
+            data: None,
+            combination: None,
+            envelope: false,
+            computed: 0,
+        }
+    }
+
     /// The SQL clause on the alias `o`, with the parameters `$first` to `$first+7`.
     pub fn clause(&self, first: usize) -> String {
         self.clause_at(std::array::from_fn(|i| first + i))
@@ -184,7 +198,7 @@ impl Bound {
 
     /// True when the clause can drop a node.
     pub fn narrows(&self) -> bool {
-        self.roots || self.filter.narrows()
+        self.roots || self.descendants.is_some() || self.filter.narrows()
     }
 }
 

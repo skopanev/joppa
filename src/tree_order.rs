@@ -71,6 +71,16 @@ pub fn ordered_ids(w: &Workspace, kind: &str, parent: Option<&str>) -> Result<Ve
             _ => bail!("order domains, capabilities or requirements within their parent"),
         }
     };
+    Ok(arrange(w, kind, parent, members))
+}
+/// The sibling IDs of one type under `parent` in tree order: first the stored order, then
+/// each other member in ID order.
+pub fn arrange(
+    w: &Workspace,
+    kind: &str,
+    parent: Option<&str>,
+    members: BTreeSet<String>,
+) -> Vec<String> {
     let mut ids: Vec<String> = w
         .tree_order
         .get(&key(kind, parent))
@@ -84,7 +94,7 @@ pub fn ordered_ids(w: &Workspace, kind: &str, parent: Option<&str>) -> Result<Ve
             ids.push(id);
         }
     }
-    Ok(ids)
+    ids
 }
 pub fn reorder(
     w: &mut Workspace,

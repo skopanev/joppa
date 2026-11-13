@@ -6,9 +6,9 @@ use super::*;
 /// without one the reply is None.
 pub(super) async fn answer(
     pool: &Pool,
-    actor: &str,
+    actor: Option<&str>,
     scope: &[String],
-    (query, filter, limit, flags): (&str, &crate::node_filter::NodeFilter, i64, Flags),
+    (query, within, limit, flags): (&str, super::Within<'_>, i64, Flags),
     vector: Option<String>,
     mut semantic: &'static str,
 ) -> Result<Option<Value>> {
@@ -20,8 +20,8 @@ pub(super) async fn answer(
         .start()
         .await?;
     // Recheck after network I/O: access may have been revoked while embedding.
-    for ws in scope {
-        access::check(&*tx, ws, actor, false).await?;
+    for ws in scope.iter().filter(|_| actor.is_some()) {
+        access::check(&*tx, ws, actor.unwrap_or_default(), false).await?;
     }
     let state = tx
         .query_one(
@@ -32,7 +32,14 @@ pub(super) async fn answer(
     let canonical: String = state.get(0);
     let position: i64 = state.get(1);
     // The node filters keep the same objects in the counts and in each candidate list.
-    let bound = crate::node_filter::bind(&*tx, home, filter, false, flags.all_versions).await?;
+    let bound = match within {
+        super::Within::Filter(filter) => {
+            crate::node_filter::bind(&*tx, home, filter, false, flags.all_versions).await?
+        }
+        super::Within::Addresses(addresses) => {
+            crate::node_filter::Bound::within(home, addresses.to_vec())
+        }
+    };
     type Key = (String, String, String, i32);
     let mut scores = BTreeMap::<Key, f64>::new();
     // (exact ID or address, matched by item ID): a kept item ID is reported as queried.

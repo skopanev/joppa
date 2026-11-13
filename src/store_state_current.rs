@@ -42,17 +42,7 @@ pub(crate) async fn current(
             objects.insert(key, serde_json::from_str(row.get(2))?);
             continue;
         }
-        let entry: Value = serde_json::from_str(row.get(2))?;
-        if section == "meta" {
-            for (key, value_entry) in entry.as_object().unwrap() {
-                value[key] = value_entry.clone();
-            }
-        } else {
-            if !value[&section].is_object() {
-                value[&section] = json!({});
-            }
-            value[&section][key] = entry;
-        }
+        fold(&mut value, &section, key, serde_json::from_str(row.get(2))?);
     }
     let mut state: Workspace = serde_json::from_value(value)?;
     state.objects = objects;
@@ -62,6 +52,37 @@ pub(crate) async fn current(
         "current projection is missing; run backfill-board"
     );
     Ok((state, position.get::<_, i64>(0) as u64))
+}
+
+/// Put one state row other than an object into the JSON value of a workspace.
+fn fold(value: &mut Value, section: &str, key: String, entry: Value) {
+    if section == "meta" {
+        for (key, value_entry) in entry.as_object().into_iter().flatten() {
+            value[key] = value_entry.clone();
+        }
+    } else {
+        if !value[section].is_object() {
+            value[section] = json!({});
+        }
+        value[section][key] = entry;
+    }
+}
+
+/// The workspace without objects: only the meta row and the tree order. It gives the schema,
+/// the members and the order of siblings, and reads no object row.
+pub(crate) async fn outline(client: &impl GenericClient, workspace: &str) -> Result<Workspace> {
+    let mut value = serde_json::to_value(Workspace::default())?;
+    let sql = "SELECT section,key,value::text FROM joppa.state_entries WHERE workspace=$1 AND section IN ('meta','tree_order')";
+    for row in client.query(sql, &[&workspace]).await? {
+        let section: String = row.get(0);
+        fold(
+            &mut value,
+            &section,
+            row.get(1),
+            serde_json::from_str(row.get(2))?,
+        );
+    }
+    Ok(serde_json::from_value(value)?)
 }
 
 pub(crate) async fn hydrate_objects(

@@ -56,11 +56,7 @@ pub async fn find_with(
     embedder: Option<&Embedder>,
     flags: Flags,
 ) -> Result<Value> {
-    ensure!(
-        !query.trim().is_empty() && query.chars().count() <= 2000,
-        "query must contain 1–2000 characters"
-    );
-    ensure!((1..=50).contains(&limit), "limit must be 1–50");
+    check(query, limit)?;
     // Authorization precedes any query embedding or provider traffic.
     let home = super::search::current(pool, workspace, Some(actor)).await?;
     let mut scope = vec![home.clone()];
@@ -77,11 +73,63 @@ pub async fn find_with(
             }
         }
     }
+    let words = (query, Within::Filter(filter), limit, flags);
+    rank(pool, Some(actor), &scope, words, embedder).await
+}
+
+/// The search of a read key: no actor, and only the addresses of `within` are candidates. It
+/// gives the addresses of at most `limit` results in the ranking of find_with.
+pub async fn find_within(
+    pool: &Pool,
+    workspace: &str,
+    query: &str,
+    within: &[String],
+    limit: i64,
+    embedder: Option<&Embedder>,
+) -> Result<Vec<String>> {
+    check(query, limit)?;
+    let home = super::search::current(pool, workspace, None).await?;
+    let flags = Flags {
+        lean: true,
+        ..Flags::default()
+    };
+    let words = (query, Within::Addresses(within), limit, flags);
+    let reply = rank(pool, None, &[home], words, embedder).await?;
+    let items = reply["items"].as_array().into_iter().flatten();
+    let address = |i: &Value| Some(format!("{}:{}", i["kind"].as_str()?, i["id"].as_str()?));
+    Ok(items.filter_map(address).collect())
+}
+
+/// Refuse an empty query, a query over 2000 characters and a limit outside 1 to 50.
+fn check(query: &str, limit: i64) -> Result<()> {
+    ensure!(
+        !query.trim().is_empty() && query.chars().count() <= 2000,
+        "query must contain 1–2000 characters"
+    );
+    ensure!((1..=50).contains(&limit), "limit must be 1–50");
+    Ok(())
+}
+
+/// The candidates of a search: the node filters of a read, or a fixed set of addresses.
+#[derive(Clone, Copy)]
+pub(super) enum Within<'a> {
+    Filter(&'a crate::node_filter::NodeFilter),
+    Addresses(&'a [String]),
+}
+
+/// The ranked reply of one search in `scope`. Without an actor the caller checked the access.
+async fn rank(
+    pool: &Pool,
+    actor: Option<&str>,
+    scope: &[String],
+    words: (&str, Within<'_>, i64, Flags),
+    embedder: Option<&Embedder>,
+) -> Result<Value> {
+    let query = words.0;
     // A query in the form of an ID or an address reads its exact matches first: a match
     // answers with no provider request.
-    let words = (query, filter, limit, flags);
     if exact_form(query)
-        && let Some(reply) = answer(pool, actor, &scope, words, None, "exact_match").await?
+        && let Some(reply) = answer(pool, actor, scope, words, None, "exact_match").await?
     {
         return Ok(reply);
     }
@@ -92,7 +140,7 @@ pub async fn find_with(
         },
         None => (None, "not_configured"),
     };
-    let reply = answer(pool, actor, &scope, words, vector, semantic).await?;
+    let reply = answer(pool, actor, scope, words, vector, semantic).await?;
     reply.context("a search without the exact form always answers")
 }
 
