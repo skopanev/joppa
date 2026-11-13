@@ -9,7 +9,7 @@ use read_key::{Auth, call, create_key, data, purge, revoke_key, session};
 use record_world::World;
 use serde_json::{Value, json};
 
-/// W1 is the workspace of the world under a new ID; its first ID stays its alias. W2 is a
+/// W1 is the workspace of the world under a new ID. Its first ID stays its alias. W2 is a
 /// second workspace. K1 is the read key of W1, and R is a revoked key of W1.
 struct Scope<'a> {
     w: &'a World,

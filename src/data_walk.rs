@@ -38,16 +38,20 @@ pub fn field_matches(value: Option<&Value>, wanted: &[Value]) -> bool {
     }
 }
 
-/// JSON equality, with numbers compared by value, so 3 equals 3.0. Two integers compare
-/// exactly, so a large integer never equals its float neighbour.
+/// JSON equality, with numbers compared by value. Two integers compare exactly. An integer
+/// equals a float only when the float has no fraction and has the same exact value, so
+/// 3 equals 3.0 and a large integer never equals its float neighbour.
 fn same(a: &Value, b: &Value) -> bool {
+    let (Value::Number(x), Value::Number(y)) = (a, b) else {
+        return a == b;
+    };
     let int = |n: &serde_json::Number| n.as_i64().map(i128::from).or(n.as_u64().map(i128::from));
-    match (a, b) {
-        (Value::Number(x), Value::Number(y)) => match (int(x), int(y)) {
-            (Some(x), Some(y)) => x == y,
-            _ => x.as_f64() == y.as_f64(),
-        },
-        _ => a == b,
+    let exact = |i: i128, f: f64| f.fract() == 0.0 && f.abs() < 1e38 && f as i128 == i;
+    match (int(x), int(y)) {
+        (Some(i), Some(j)) => i == j,
+        (Some(i), None) => y.as_f64().is_some_and(|f| exact(i, f)),
+        (None, Some(j)) => x.as_f64().is_some_and(|f| exact(j, f)),
+        (None, None) => x.as_f64() == y.as_f64(),
     }
 }
 

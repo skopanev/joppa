@@ -36,6 +36,9 @@ fn large_integers_compare_exactly() {
         json!([1, 18446744073709551615_u64])
     ));
     assert!(!yes(json!(-1), json!(18446744073709551615_u64)));
+    assert!(!yes(json!(9007199254740993_i64), json!(9007199254740992.0)));
+    assert!(yes(json!(3), json!(3.0)));
+    assert!(!yes(json!(3), json!(3.5)));
 }
 
 #[test]
