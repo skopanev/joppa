@@ -103,6 +103,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
     let task_role = |kind: &str| configured.types.get(kind).is_some_and(|t| t.role == "task");
     let mut texts = BTreeMap::new();
     for (key, o) in w.objects.iter_mut() {
+        let o = std::sync::Arc::make_mut(o);
         if !task_role(&o.kind) && !w.task_process.contains_key(key) {
             continue;
         }
@@ -129,6 +130,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         }
     }
     for (id, q) in w.requirements.iter_mut() {
+        let q = std::sync::Arc::make_mut(q);
         let Some(r) = q.revisions.last_mut() else {
             continue;
         };

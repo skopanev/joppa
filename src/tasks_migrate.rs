@@ -16,7 +16,9 @@ pub(crate) fn append(
     r.at = at.into();
     r.position = position;
     r.reason = reason.into();
-    w.objects.get_mut(key).unwrap().revisions.push(r);
+    std::sync::Arc::make_mut(w.objects.get_mut(key).unwrap())
+        .revisions
+        .push(r);
 }
 
 pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Result<()> {

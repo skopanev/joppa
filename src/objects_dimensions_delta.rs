@@ -1,8 +1,9 @@
 //! Part of objects_dimensions.rs: the dimension tones of one write. Only the nodes that the
 //! status projection of the write recomputes get new tones, and a node outside that set gives
 //! its stored tones. The values equal the full projection (`project`), which runs instead
-//! when the dimensions change, when a node that the write did not change gets other
-//! dimension values, or when the recomputed nodes form a cycle.
+//! when the dimensions change, when a changed node with present children gets other
+//! dimension values, or when the recomputed nodes form a cycle. The write reads the values of
+//! only the nodes that the tones read.
 use super::super::projection::store_rows;
 use super::super::tone_items::{PRIORITY, highest, rule_of};
 use super::*;
@@ -33,25 +34,31 @@ pub(in crate::store) async fn update(
     if dimensions != dims::dimensions(previous) {
         return project(client, workspace, state).await;
     }
-    if dimensions.is_empty() {
+    if dimensions.is_empty() || dirty.is_empty() && nodes.is_empty() {
         return Ok(());
     }
-    let effective = dims::effective(state, &dimensions);
-    let before = dims::effective(previous, &dimensions);
-    let keys: BTreeSet<&String> = effective.keys().chain(before.keys()).collect();
-    let changed: Vec<&String> = keys
-        .into_iter()
-        .filter(|a| effective.get(*a) != before.get(*a))
-        .collect();
-    if changed.iter().any(|a| !dirty.contains(*a)) {
-        return project(client, workspace, state).await;
+    let rows = Rows::read(client, workspace, nodes).await?;
+    // A changed node with present children gives them other values: only the full
+    // projection reaches them.
+    for address in dirty {
+        let new = dims::effective_of(state, &dimensions, address);
+        let parent =
+            !nodes.contains(address) || rows.children.get(address).is_some_and(|c| !c.is_empty());
+        if parent && new != dims::effective_of(previous, &dimensions, address) {
+            return project(client, workspace, state).await;
+        }
     }
     let values: Vec<Value> = dirty
         .iter()
-        .map(|a| json!({"address":a,"value":effective.get(a)}))
+        .map(|a| json!({"address":a,"value":dims::effective_of(state, &dimensions, a)}))
         .collect();
     store_rows(client, workspace, "dims", &values).await?;
-    let rows = Rows::read(client, workspace, nodes).await?;
+    // The values of each node that a tone reads.
+    let read = nodes.iter().chain(rows.children.values().flatten());
+    let read = read.chain(rows.linked.values().flatten());
+    let effective: BTreeMap<&str, _> = read
+        .map(|a| (a.as_str(), dims::effective_of(state, &dimensions, a)))
+        .collect();
     let types = crate::objects::schema(state).types;
     let tested: Vec<String> = rows
         .kinds
@@ -73,7 +80,8 @@ pub(in crate::store) async fn update(
             .collect();
         let statuses =
             super::super::reports::compute(criteria.clone(), &reports, &counted, &rules, &checks)?;
-        let applies = |a: &str| dims::applies(effective.get(a), combination);
+        let applies =
+            |a: &str| dims::applies(effective.get(a).and_then(Option::as_ref), combination);
         let key = dims::key(combination);
         let mut memo = BTreeMap::new();
         for address in nodes.iter().filter(|a| applies(a)) {
@@ -100,7 +108,8 @@ pub(in crate::store) async fn update(
         .iter()
         .map(|a| json!({"address":a,"value":tones.remove(a)}))
         .collect();
-    store_rows(client, workspace, "dim_tones", &values).await
+    store_rows(client, workspace, "dim_tones", &values).await?;
+    Ok(())
 }
 
 impl Rows {
@@ -221,7 +230,7 @@ impl<F: Fn(&str) -> bool> Walk<'_, F> {
     }
 }
 
-/// A stored tone as one of the rollup tones; another stored value counts as blue.
+/// A stored tone as one of the rollup tones. Another stored value counts as blue.
 fn stored_tone(tone: &str) -> &'static str {
     PRIORITY.into_iter().find(|t| *t == tone).unwrap_or("blue")
 }

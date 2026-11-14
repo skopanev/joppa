@@ -67,7 +67,11 @@ pub(crate) async fn hydrate_revision(
     let Some(req) = command["req"].as_str() else {
         return Ok(());
     };
-    let Some(q) = state.requirements.get_mut(req) else {
+    let Some(q) = state
+        .requirements
+        .get_mut(req)
+        .map(std::sync::Arc::make_mut)
+    else {
         return Ok(());
     };
     let requested = command["revision"].as_u64().map(|n| n as i32);

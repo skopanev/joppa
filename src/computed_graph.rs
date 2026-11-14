@@ -13,10 +13,11 @@ pub struct Graph<'a> {
     types: BTreeMap<String, TreeType>,
     /// The computed fields of each type.
     rules: BTreeMap<String, BTreeMap<String, FieldType>>,
-    children: BTreeMap<String, Vec<String>>,
-    pub linked: BTreeMap<String, BTreeSet<String>>,
+    /// The maps borrow the addresses of the workspace, so a write builds them without copies.
+    children: BTreeMap<&'a str, Vec<&'a str>>,
+    pub linked: BTreeMap<&'a str, BTreeSet<&'a str>>,
     /// The present nodes that link to each absent node, such as an archived one.
-    pub linked_absent: BTreeMap<String, BTreeSet<String>>,
+    pub linked_absent: BTreeMap<&'a str, BTreeSet<&'a str>>,
 }
 
 impl<'a> Graph<'a> {
@@ -36,21 +37,22 @@ impl<'a> Graph<'a> {
         };
         for (address, o) in w.objects.iter().filter(|(_, o)| o.current().present) {
             let current = o.current();
+            let address = address.as_str();
             if let Some(parent) = &current.parent {
-                let parent = resolve_address(w, parent).to_owned();
-                let children = graph.children.entry(parent).or_default();
-                children.push(address.clone());
+                let parent = resolve_address(w, parent);
+                graph.children.entry(parent).or_default().push(address);
             }
             for edge in current.counted() {
-                let target = resolve_address(w, &edge.to).to_owned();
-                if graph.present(&target) && target != *address {
-                    let from = graph.linked.entry(address.clone()).or_default();
-                    from.insert(target.clone());
-                    let to = graph.linked.entry(target).or_default();
-                    to.insert(address.clone());
-                } else if target != *address {
-                    let to = graph.linked_absent.entry(target).or_default();
-                    to.insert(address.clone());
+                let target = resolve_address(w, &edge.to);
+                if graph.present(target) && target != address {
+                    graph.linked.entry(address).or_default().insert(target);
+                    graph.linked.entry(target).or_default().insert(address);
+                } else if target != address {
+                    graph
+                        .linked_absent
+                        .entry(target)
+                        .or_default()
+                        .insert(address);
                 }
             }
         }
@@ -91,7 +93,7 @@ impl<'a> Graph<'a> {
     }
 
     /// The present children of a node.
-    pub fn children(&self, address: &str) -> &[String] {
+    pub fn children(&self, address: &str) -> &[&'a str] {
         self.children.get(address).map_or(&[], Vec::as_slice)
     }
 

@@ -198,12 +198,14 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         } else {
             current.data["review_policy"] = json!(w.questions);
         }
-        let mut note = old.clone();
+        let mut note = Object::clone(&old);
         note.kind = "note".into();
         note.id = target.strip_prefix("note:").unwrap().into();
         note.parent_override = true;
         note.revisions.push(current);
-        candidate.objects.insert(target.clone(), note);
+        candidate
+            .objects
+            .insert(target.clone(), std::sync::Arc::new(note));
         let mut retired = old.current().clone();
         retired.revision += 1;
         retired.present = false;
@@ -211,10 +213,7 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         retired.at = at.into();
         retired.position = position;
         retired.reason = reason.into();
-        candidate
-            .objects
-            .get_mut(&key)
-            .unwrap()
+        std::sync::Arc::make_mut(candidate.objects.get_mut(&key).unwrap())
             .revisions
             .push(retired);
         if let Some(notes) = candidate.notes.remove(&key) {

@@ -66,12 +66,18 @@ pub(super) async fn settle(
     };
     let types = crate::objects::schema(&state).types;
     for (address, object) in &mut state.objects {
-        object
-            .revisions
-            .drain(..object.revisions.len().saturating_sub(1));
         let compact = types.get(&object.kind).is_some_and(|t| {
             t.inbox == Some(true) && ["group", "document"].contains(&t.role.as_str())
         });
+        let compact = compact && !state.unloaded_objects.contains(address);
+        // An object with one revision that keeps its data stays shared, without a copy.
+        if object.revisions.len() <= 1 && !compact {
+            continue;
+        }
+        let object = std::sync::Arc::make_mut(object);
+        object
+            .revisions
+            .drain(..object.revisions.len().saturating_sub(1));
         // A compact row has no body and no description in the data of its revision.
         if compact && state.unloaded_objects.insert(address.clone()) {
             let data = &mut object.revisions[0].data;
@@ -82,9 +88,12 @@ pub(super) async fn settle(
         }
     }
     for requirement in state.requirements.values_mut() {
-        requirement
-            .revisions
-            .drain(..requirement.revisions.len().saturating_sub(1));
+        if requirement.revisions.len() > 1 {
+            let requirement = std::sync::Arc::make_mut(requirement);
+            requirement
+                .revisions
+                .drain(..requirement.revisions.len().saturating_sub(1));
+        }
     }
     state
         .tree_schema

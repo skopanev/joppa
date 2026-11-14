@@ -44,7 +44,7 @@ pub(super) fn apply_comment(
     if let Some(a) = ac {
         ensure!(r.acs.iter().any(|c| &c.id == a), "unknown AC");
     }
-    let q = w.requirements.get_mut(req).unwrap();
+    let q = std::sync::Arc::make_mut(w.requirements.get_mut(req).unwrap());
     ensure!(!q.comments.contains_key(id), "comment id exists");
     if let Some(p) = reply_to {
         ensure!(q.comments.contains_key(p), "unknown previous comment");

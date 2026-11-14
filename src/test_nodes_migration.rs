@@ -67,7 +67,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         })
         .collect();
     for (key, tests) in lists {
-        let o = w.objects.get_mut(&key).expect("listed object");
+        let o = std::sync::Arc::make_mut(w.objects.get_mut(&key).expect("listed object"));
         let contract = contract_revision(o);
         let mut revision = o.current().clone();
         revision.data.as_object_mut().map(|d| d.remove("tests"));
@@ -99,15 +99,13 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
                 present: true,
                 contract: None,
             };
-            w.objects.insert(
-                address.clone(),
-                Object {
-                    kind: kind.clone(),
-                    id,
-                    revisions: vec![node],
-                    parent_override: false,
-                },
-            );
+            let node = Object {
+                kind: kind.clone(),
+                id,
+                revisions: vec![node],
+                parent_override: false,
+            };
+            w.objects.insert(address.clone(), std::sync::Arc::new(node));
             if let Some(at) = &boundary {
                 w.criterion_boundaries.insert(address, at.clone());
             }

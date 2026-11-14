@@ -54,12 +54,29 @@ pub(crate) async fn current(
     Ok((state, position.get::<_, i64>(0) as u64))
 }
 
+/// The sets of addresses that keep one row for each address, not a list in the meta row.
+const SETS: [&str; 2] = ["document_overrides", "archived_objects"];
+
 /// Put one state row other than an object into the JSON value of a workspace.
 fn fold(value: &mut Value, section: &str, key: String, entry: Value) {
     if section == "meta" {
         for (key, value_entry) in entry.as_object().into_iter().flatten() {
-            value[key] = value_entry.clone();
+            // A meta row before migration 070 holds a set as a list: the lists merge.
+            match (value[key].as_array_mut(), value_entry.as_array()) {
+                (Some(list), Some(more)) if SETS.contains(&key.as_str()) => {
+                    list.extend(more.iter().cloned())
+                }
+                _ => value[key] = value_entry.clone(),
+            }
         }
+    } else if SETS.contains(&section) {
+        if !value[section].is_array() {
+            value[section] = json!([]);
+        }
+        value[section]
+            .as_array_mut()
+            .unwrap()
+            .push(Value::String(key));
     } else {
         if !value[section].is_object() {
             value[section] = json!({});

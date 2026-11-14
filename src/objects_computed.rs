@@ -66,16 +66,17 @@ async fn stored(
     graph: &Graph<'_>,
     reached: &BTreeSet<String>,
 ) -> Result<Memo> {
-    let outside: BTreeSet<&String> = reached
+    let outside: BTreeSet<&str> = reached
         .iter()
         .flat_map(|a| graph.children(a))
+        .copied()
         .filter(|c| !reached.contains(*c) && graph.fields(c).is_some())
         .collect();
     let mut memo = Memo::new();
     if outside.is_empty() {
         return Ok(memo);
     }
-    let addresses: Vec<&String> = outside.into_iter().collect();
+    let addresses: Vec<&str> = outside.into_iter().collect();
     let sql = "SELECT address,computed::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2) AND computed IS NOT NULL";
     for row in client.query(sql, &[&workspace, &addresses]).await? {
         let address: String = row.get(0);
@@ -100,15 +101,16 @@ fn reach(
 ) -> BTreeSet<String> {
     let mut set = dirty.clone();
     for address in dirty {
-        set.extend(graph.linked.get(address).into_iter().flatten().cloned());
+        let linked = graph.linked.get(address.as_str()).into_iter().flatten();
+        set.extend(linked.map(|a| a.to_string()));
         // An archived or removed node: the nodes that still link to it read it no longer.
         set.extend(
             graph
                 .linked_absent
-                .get(address)
+                .get(address.as_str())
                 .into_iter()
                 .flatten()
-                .cloned(),
+                .map(|a| a.to_string()),
         );
         if let Some(o) = previous.objects.get(address) {
             let targets = o.current().counted();
@@ -126,8 +128,8 @@ fn reach(
         let mut queue: Vec<String> = set.iter().cloned().collect();
         while let Some(address) = queue.pop() {
             for child in graph.children(&address) {
-                if set.insert(child.clone()) {
-                    queue.push(child.clone());
+                if set.insert(child.to_string()) {
+                    queue.push(child.to_string());
                 }
             }
         }

@@ -26,6 +26,7 @@ pub mod history_entry;
 pub mod inbox;
 mod intake;
 pub mod manual_checks;
+pub mod map_pairs;
 pub mod mcp_lean;
 pub mod mcp_shapes;
 pub mod model;

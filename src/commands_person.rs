@@ -71,6 +71,7 @@ pub fn revision<'a>(
     let r = w
         .requirements
         .get_mut(req)
+        .map(std::sync::Arc::make_mut)
         .ok_or_else(|| anyhow::anyhow!("unknown REQ"))?;
     ensure!(
         n > 0 && (!current || r.revisions.last().is_some_and(|r| r.number == n)),
@@ -127,10 +128,19 @@ fn apply_changed(
     }
     crate::decision_migration::check(w, command)?;
     crate::objects::validate_current(w, command)?;
+    let snapshot = super::ledger::snapshot(w, command);
     apply_inner(w, actor, command, position, recorded_at)?;
     // As in a replay, an event that writes no document skips the sync and the reset.
     if !writes_no_document(command) {
-        crate::objects::sync(w, actor, command, position, recorded_at);
+        // A save or an archive syncs only the requirements that it changes.
+        match snapshot.and_then(|s| s.scope(w)) {
+            Some(scope) if scope.requirements.is_empty() && scope.old_keys.is_empty() => {}
+            Some(scope) => {
+                let at = (position, recorded_at);
+                crate::objects::sync_scoped(w, (actor, command), at, &scope);
+            }
+            None => crate::objects::sync(w, actor, command, position, recorded_at),
+        }
         crate::objects::reset_changed(w, command, position, recorded_at)?;
     }
     crate::source_reset::reset(w, command, position, recorded_at)

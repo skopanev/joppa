@@ -38,6 +38,8 @@ pub use mcp::*;
 #[path = "commands_person.rs"]
 mod person;
 pub use person::*;
+#[path = "commands_ledger.rs"]
+mod ledger;
 #[path = "commands_replay_rules.rs"]
 mod replay_rules;
 pub use replay_rules::*;

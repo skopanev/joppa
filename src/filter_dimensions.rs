@@ -90,19 +90,25 @@ pub fn effective(
     w: &Workspace,
     dimensions: &[Dimension],
 ) -> BTreeMap<String, BTreeMap<String, Vec<String>>> {
-    let mut out = BTreeMap::new();
-    for (address, _) in w.objects.iter().filter(|(_, o)| o.current().present) {
-        let mut found = BTreeMap::new();
-        for dimension in dimensions {
-            if let Some(values) = applied(w, address, &dimension.field) {
-                found.insert(dimension.field.clone(), values);
-            }
-        }
-        if !found.is_empty() {
-            out.insert(address.clone(), found);
-        }
-    }
-    out
+    let present = w.objects.iter().filter(|(_, o)| o.current().present);
+    present
+        .filter_map(|(address, _)| Some((address.clone(), effective_of(w, dimensions, address)?)))
+        .collect()
+}
+
+/// The entry of `effective` for one node: None for an archived or unknown node, or for a
+/// node that applies to every value.
+pub fn effective_of(
+    w: &Workspace,
+    dimensions: &[Dimension],
+    address: &str,
+) -> Option<BTreeMap<String, Vec<String>>> {
+    w.objects.get(address).filter(|o| o.current().present)?;
+    let found: BTreeMap<String, Vec<String>> = dimensions
+        .iter()
+        .filter_map(|d| Some((d.field.clone(), applied(w, address, &d.field)?)))
+        .collect();
+    (!found.is_empty()).then_some(found)
 }
 
 /// The values of `field` of the node or of its nearest ancestor with the field.

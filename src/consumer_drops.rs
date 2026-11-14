@@ -109,7 +109,7 @@ pub fn apply(w: &mut Workspace, actor: &str, at: &str) -> Result<()> {
     w.consumer_drops_noted = true;
     for (key, (kept, list)) in removed(w) {
         let address = annotation_address(w, &key);
-        let notes = w.notes.entry(address).or_default();
+        let notes = std::sync::Arc::make_mut(w.notes.entry(address).or_default());
         if notes.comments.contains_key(COMMENT) {
             continue;
         }

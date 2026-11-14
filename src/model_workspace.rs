@@ -29,7 +29,7 @@ pub struct Workspace {
     #[serde(default)]
     pub object_aliases: BTreeMap<String, String>,
     #[serde(default)]
-    pub objects: BTreeMap<String, crate::objects::Object>,
+    pub objects: BTreeMap<String, std::sync::Arc<crate::objects::Object>>,
     /// Member redactions per object. The fragment itself stays only in the journal.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub redactions: BTreeMap<String, Vec<crate::redact::Redaction>>,
@@ -104,13 +104,13 @@ pub struct Workspace {
     #[serde(default)]
     pub consumers: BTreeMap<String, Consumer>,
     pub projects: BTreeMap<String, String>,
-    pub requirements: BTreeMap<String, Requirement>,
+    pub requirements: BTreeMap<String, std::sync::Arc<Requirement>>,
     pub intake: BTreeMap<String, Intake>,
     pub questions: BTreeMap<String, Vec<String>>,
     /// The description, comments and attachments of each object, by its address, for example
     /// `domain:billing` or `ac:r-xxx/2`.
     #[serde(default)]
-    pub notes: BTreeMap<String, Notes>,
+    pub notes: BTreeMap<String, std::sync::Arc<Notes>>,
     /// Tests that prove each criterion, by criterion address, with their own history.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub ac_tests: BTreeMap<String, crate::ac_tests::AcTests>,

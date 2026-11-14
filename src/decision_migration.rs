@@ -45,6 +45,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
     );
     let schema_revision = schema(w).revision;
     for o in w.objects.values_mut() {
+        let o = std::sync::Arc::make_mut(o);
         let mut revision = o.current().clone();
         let removed = revision.data.as_object_mut().and_then(|m| m.remove(FIELD));
         if removed.is_none() {

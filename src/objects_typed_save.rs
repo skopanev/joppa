@@ -28,6 +28,7 @@ pub(crate) fn typed_save(
         .map(|key| resolve_address(w, key).to_owned());
     let criterion = schema(w).types[kind].role == "ac";
     if let Some(cmd) = typed_command(w, kind, id, parent.as_deref(), data, reason)? {
+        let snapshot = Snapshot::of(w, Some(key));
         // A criterion that moves to another requirement leaves the old one first.
         let out = criterion_move_out(w, kind, id, &cmd, reason)?;
         w.document_overrides.remove(key);
@@ -42,6 +43,8 @@ pub(crate) fn typed_save(
         let spec_reason = (criterion
             && commands::rule_applies(w, commands::CRITERION_SAVE_REASON, position))
         .then(|| format!("Criterion {key} changed: {reason}"));
+        let scope = snapshot.scope(w);
+        let reason = spec_reason.as_deref();
         sync_with(
             w,
             actor,
@@ -49,7 +52,8 @@ pub(crate) fn typed_save(
             position,
             at,
             siblings,
-            spec_reason.as_deref(),
+            reason,
+            scope.as_ref(),
         );
     } else {
         w.document_overrides.insert(key.to_owned());

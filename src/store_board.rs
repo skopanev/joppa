@@ -69,21 +69,28 @@ pub(super) async fn project_selected(
                     )
             })
         });
-    let mut counts = BTreeMap::<&str, usize>::new();
-    for o in state.objects.values().filter(|o| o.current().present) {
-        *counts.entry(&o.kind).or_default() += 1;
-    }
     let current = crate::objects::schema(state);
     let statuses =
         crate::status_colors::effective(current.statuses.as_ref(), current.status_colors.as_ref());
     let dimensions = crate::filter_dimensions::dimensions(state);
-    let filters =
-        crate::filter_fields::values(state, current.filters.as_deref().unwrap_or_default());
-    // A typed enum field and a dimension offer each of their values.
-    let filters =
-        crate::filter_dimensions::with_values(filters, &crate::field_types::enum_values(state));
-    let filters = crate::filter_dimensions::with_values(filters, &dimensions);
-    let first_view = json!({"filters":filters,"dimensions":crate::filter_dimensions::listed(&dimensions),"computed_fields":crate::computed_fields::rules(&crate::objects::schema(state).types).keys().collect::<Vec<_>>(),"projection_version":BOARD_PROJECTION_VERSION,"object_types":object_types,"statuses":statuses,"custom_tree":custom_tree,"title":&state.title,"hidden_by":&state.hidden_by,"assignees":crate::filter_fields::assignees(state),"members":&state.members,
+    let (filters, assignees, counts) = match kept_lists(client, workspace, state, previous).await? {
+        Some(kept) => kept,
+        None => {
+            let mut counts = BTreeMap::<&str, usize>::new();
+            for o in state.objects.values().filter(|o| o.current().present) {
+                *counts.entry(&o.kind).or_default() += 1;
+            }
+            let fields = current.filters.as_deref().unwrap_or_default();
+            let filters = crate::filter_fields::values(state, fields);
+            // A typed enum field and a dimension offer each of their values.
+            let enums = crate::field_types::enum_values(state);
+            let filters = crate::filter_dimensions::with_values(filters, &enums);
+            let filters = crate::filter_dimensions::with_values(filters, &dimensions);
+            let assignees = json!(crate::filter_fields::assignees(state));
+            (filters, assignees, json!(counts))
+        }
+    };
+    let first_view = json!({"filters":filters,"dimensions":crate::filter_dimensions::listed(&dimensions),"computed_fields":crate::computed_fields::rules(&crate::objects::schema(state).types).keys().collect::<Vec<_>>(),"projection_version":BOARD_PROJECTION_VERSION,"object_types":object_types,"statuses":statuses,"custom_tree":custom_tree,"title":&state.title,"hidden_by":&state.hidden_by,"assignees":assignees,"members":&state.members,
         "workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
     super::objects::project(client, workspace, state, events, selected.as_ref()).await?;
     client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,first_view=EXCLUDED.first_view || CASE WHEN board_cache.first_view ? 'legacy_receipts_version' THEN jsonb_build_object('legacy_receipts_version',board_cache.first_view->'legacy_receipts_version') ELSE '{}'::jsonb END || CASE WHEN board_cache.first_view ? 'status_projection' THEN jsonb_build_object('status_projection',board_cache.first_view->'status_projection') ELSE '{}'::jsonb END",
@@ -161,4 +168,48 @@ pub async fn board_read(pool: &Pool, workspace: &str, actor: &str) -> Result<Val
                 "member_labels":labels,
                 "object_types":first["object_types"],"statuses":labelled(&first["statuses"]),"archived_tone":crate::status_colors::ARCHIVED_TONE,"counts":first["counts"],"custom_tree":first["custom_tree"],"filters":first["filters"],"dimensions":first["dimensions"],"assignees":first["assignees"]}),
     )
+}
+
+/// The filter values, the assignees and the counts of the stored board row, when the write
+/// changes no input of them: the schema, and the type, the presence, the assignee and the
+/// filter fields of each object.
+async fn kept_lists(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &Workspace,
+    previous: Option<&Workspace>,
+) -> Result<Option<(Value, Value, Value)>> {
+    let Some(previous) = previous else {
+        return Ok(None);
+    };
+    let revision = |w: &Workspace| w.tree_schema.last().map(|s| s.revision);
+    if revision(state) != revision(previous) {
+        return Ok(None);
+    }
+    let filters = crate::objects::schema(state).filters.unwrap_or_default();
+    for pair in crate::map_pairs::pairs(&previous.objects, &state.objects) {
+        let (Some(old), Some(new)) = (pair.old, pair.new) else {
+            return Ok(None);
+        };
+        if std::sync::Arc::ptr_eq(old, new) {
+            continue;
+        }
+        let (a, b) = (old.current(), new.current());
+        let mut fields = filters.iter().map(String::as_str).chain(["assignee"]);
+        if old.kind != new.kind || a.present != b.present || fields.any(|f| a.data[f] != b.data[f])
+        {
+            return Ok(None);
+        }
+    }
+    let sql = "SELECT (first_view->'filters')::text,(first_view->'assignees')::text,(first_view->'counts')::text FROM joppa.board_cache WHERE workspace=$1 AND first_view->>'projection_version'=$2";
+    let version = BOARD_PROJECTION_VERSION;
+    let Some(row) = client.query_opt(sql, &[&workspace, &version]).await? else {
+        return Ok(None);
+    };
+    let value =
+        |i: usize| -> Option<Value> { serde_json::from_str(row.get::<_, Option<&str>>(i)?).ok() };
+    Ok(match (value(0), value(1), value(2)) {
+        (Some(f), Some(a), Some(c)) => Some((f, a, c)),
+        _ => None,
+    })
 }

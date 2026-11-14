@@ -15,3 +15,5 @@ pub(crate) use full::*;
 #[path = "store_state_diff.rs"]
 mod diff;
 pub(crate) use diff::*;
+#[path = "store_state_light.rs"]
+mod light;

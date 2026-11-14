@@ -82,6 +82,40 @@ pub fn validate_tree(w: &Workspace) -> Result<()> {
     Ok(())
 }
 
+/// `validate_tree` after a write from `before`: only the changed objects and the present
+/// children of a changed object. A new schema or alias checks every object.
+pub fn validate_changed(w: &Workspace, before: &Workspace) -> Result<()> {
+    let schema_of = |w: &Workspace| w.tree_schema.last().map(|r| r.revision);
+    if schema_of(w) != schema_of(before) || w.object_aliases != before.object_aliases {
+        return validate_tree(w);
+    }
+    let pairs = crate::map_pairs::pairs(&before.objects, &w.objects);
+    let changed: BTreeSet<&str> = pairs
+        .filter(|p| !matches!((p.old, p.new), (Some(a), Some(b)) if std::sync::Arc::ptr_eq(a, b)))
+        .map(|p| p.key)
+        .collect();
+    if changed.is_empty() {
+        return Ok(());
+    }
+    let types = schema(w).types;
+    for (key, o) in w.objects.iter().filter(|(_, o)| o.current().present) {
+        let parent = o.current().parent.as_deref();
+        let reached = changed.contains(key.as_str())
+            || parent.is_some_and(|p| changed.contains(resolve_address(w, p)));
+        if !reached {
+            continue;
+        }
+        ensure!(
+            types.contains_key(&o.kind),
+            "object type is absent from the tree schema"
+        );
+        validate_required_fields(&types[&o.kind], &o.current().data)?;
+        parent_valid(&types, w, &o.kind, parent, Some(key))?;
+        parent_cycle(w, key, parent)?;
+    }
+    Ok(())
+}
+
 pub fn within(w: &Workspace, key: &str, target: &str) -> bool {
     let target = resolve_address(w, target);
     let mut current = Some(key);

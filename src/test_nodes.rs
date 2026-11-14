@@ -54,6 +54,14 @@ pub fn names_by_parent(w: &Workspace) -> std::collections::BTreeMap<String, Vec<
 
 /// The present test nodes under each parent, as (address, test name), in address order.
 pub fn nodes_by_parent(w: &Workspace) -> std::collections::BTreeMap<String, Vec<(String, String)>> {
+    nodes_below(w, None)
+}
+
+/// `nodes_by_parent` with only the parents in `parents`, or every parent without a set.
+pub fn nodes_below(
+    w: &Workspace,
+    parents: Option<&std::collections::BTreeSet<&str>>,
+) -> std::collections::BTreeMap<String, Vec<(String, String)>> {
     let kinds = kinds(w);
     let mut nodes = std::collections::BTreeMap::<String, Vec<(String, String)>>::new();
     for (address, o) in w.objects.iter().filter(|(_, o)| kinds.contains(&o.kind)) {
@@ -63,9 +71,12 @@ pub fn nodes_by_parent(w: &Workspace) -> std::collections::BTreeMap<String, Vec<
             &current.parent,
             current.data["title"].as_str(),
         ) {
-            let parent = crate::objects::resolve_address(w, parent).to_owned();
+            let parent = crate::objects::resolve_address(w, parent);
+            if parents.is_some_and(|p| !p.contains(parent)) {
+                continue;
+            }
             nodes
-                .entry(parent)
+                .entry(parent.to_owned())
                 .or_default()
                 .push((address.clone(), name.to_owned()));
         }

@@ -61,7 +61,9 @@ pub fn restore(
     next.reason = reason.clone();
     next.at = at.to_owned();
 
-    w.objects.get_mut(&target).unwrap().revisions.push(next);
+    std::sync::Arc::make_mut(w.objects.get_mut(&target).unwrap())
+        .revisions
+        .push(next);
     w.archived_objects.remove(&target);
     Ok(())
 }

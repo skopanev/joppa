@@ -57,10 +57,8 @@ pub(super) fn apply_describe(w: &mut Workspace, command: &Command) -> Result<()>
     {
         capability.description = text.clone();
     } else {
-        w.notes
-            .entry(crate::objects::annotation_address(w, t))
-            .or_default()
-            .description = text.clone();
+        let address = crate::objects::annotation_address(w, t);
+        std::sync::Arc::make_mut(w.notes.entry(address).or_default()).description = text.clone();
     }
     Ok(())
 }
@@ -84,10 +82,8 @@ pub(super) fn apply_note(
     target(w, t)?;
     identifier(id)?;
     nonempty(text)?;
-    let notes = w
-        .notes
-        .entry(crate::objects::annotation_address(w, t))
-        .or_default();
+    let address = crate::objects::annotation_address(w, t);
+    let notes = std::sync::Arc::make_mut(w.notes.entry(address).or_default());
     ensure!(!notes.comments.contains_key(id), "comment {id} exists");
     if let Some(parent) = reply_to {
         ensure!(
@@ -125,7 +121,7 @@ pub(super) fn apply_withdraw_note(w: &mut Workspace, actor: &str, command: &Comm
     let note = w
         .notes
         .get_mut(&annotation)
-        .and_then(|n| n.comments.get_mut(id))
+        .and_then(|n| std::sync::Arc::make_mut(n).comments.get_mut(id))
         .ok_or_else(|| anyhow::anyhow!("no such comment: {id}"))?;
     ensure!(note.actor == actor, "a comment is withdrawn by its author");
     note.withdrawn = true;
@@ -170,10 +166,8 @@ pub(super) fn apply_attach(
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
         "the attachment digest is a sha256 in lowercase hex"
     );
-    let notes = w
-        .notes
-        .entry(crate::objects::annotation_address(w, t))
-        .or_default();
+    let address = crate::objects::annotation_address(w, t);
+    let notes = std::sync::Arc::make_mut(w.notes.entry(address).or_default());
     ensure!(
         !notes.attachments.contains_key(id),
         "attachment {id} exists"
@@ -217,7 +211,7 @@ pub(super) fn apply_detach(w: &mut Workspace, command: &Command, recorded_at: &s
     let a = w
         .notes
         .get_mut(&annotation)
-        .and_then(|n| n.attachments.get_mut(id))
+        .and_then(|n| std::sync::Arc::make_mut(n).attachments.get_mut(id))
         .ok_or_else(|| anyhow::anyhow!("no such attachment: {id}"))?;
     a.removed = true;
     a.removed_at = Some(recorded_at.to_string());

@@ -44,7 +44,7 @@ pub(crate) fn affected(
     state: &Workspace,
     previous: Option<&Workspace>,
 ) -> Result<Option<std::collections::BTreeSet<String>>> {
-    use std::collections::{BTreeSet, VecDeque};
+    use std::collections::BTreeSet;
     let Some(previous) = previous else {
         return Ok(None);
     };
@@ -56,30 +56,43 @@ pub(crate) fn affected(
         return Ok(None);
     }
     let mut changed = BTreeSet::new();
+    // A write copies the workspace by pointer, so an object that it did not touch is the
+    // same allocation and needs no comparison. The two maps go side by side in key order.
+    // An object of `previous` alone is the only old object that the walk below reads: an
+    // object with the same pointer has the same edges in both.
+    let mut gone = vec![];
+    let mut old = previous.objects.iter().peekable();
     for (key, o) in &state.objects {
-        let old = previous.objects.get(key).map(|old| old.current());
-        if differs(o.current(), old)? {
+        while let Some((k, b)) = old.next_if(|(k, _)| k.as_str() < key.as_str()) {
+            gone.push((k.as_str(), b));
+        }
+        let before = old.next_if(|(k, _)| *k == key).map(|(_, b)| b);
+        if before.is_some_and(|b| std::sync::Arc::ptr_eq(o, b)) {
+            continue;
+        }
+        if differs(o.current(), before.map(|b| b.current()))? {
             changed.insert(key.clone());
         }
     }
-    let mut revised = BTreeSet::new();
-    for (req, q) in &state.requirements {
-        if differs(q, previous.requirements.get(req))? {
-            changed.insert(crate::objects::requirement_address(req));
-            revised.insert(req.as_str());
-        }
+    gone.extend(old.map(|(k, b)| (k.as_str(), b)));
+    // A changed alias resolves the old edges otherwise: then every old object counts.
+    if state.object_aliases != previous.object_aliases {
+        gone = previous
+            .objects
+            .iter()
+            .map(|(k, b)| (k.as_str(), b))
+            .collect();
     }
-    // Each object under a revised requirement changes. The walk reads the schema once.
-    if !revised.is_empty() {
-        for w in [previous, state] {
-            let types = crate::objects::schema(w).types;
-            for key in w.objects.keys() {
-                if crate::objects::verification_context_in(w, &types, key)
-                    .is_some_and(|(context, _)| revised.contains(context))
-                {
-                    changed.insert(key.clone());
-                }
+    // Each object under a revised requirement changes: the walk below the changed keys
+    // reaches each object whose verification context the requirement is.
+    for (req, q) in &state.requirements {
+        let old = previous.requirements.get(req);
+        if !old.is_some_and(|old| std::sync::Arc::ptr_eq(q, old)) && differs(q, old)? {
+            let address = crate::objects::requirement_address(req);
+            for w in [previous, state] {
+                changed.insert(crate::objects::resolve_address(w, &address).to_owned());
             }
+            changed.insert(address);
         }
     }
     for (key, t) in &state.task_process {
@@ -107,41 +120,37 @@ pub(crate) fn affected(
         }
     }
     for (key, notes) in &state.notes {
-        if differs(notes, previous.notes.get(key))? {
+        let old = previous.notes.get(key);
+        if !old.is_some_and(|old| std::sync::Arc::ptr_eq(notes, old)) && differs(notes, old)? {
             changed.insert(crate::objects::resolve_address(state, key).to_owned());
         }
     }
-    let mut incoming: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for w in [previous, state] {
-        for (key, o) in &w.objects {
-            let r = o.current();
-            let mut targets: Vec<String> = r
-                .parent
-                .iter()
-                .cloned()
-                .chain(r.depends_on().map(|e| e.to.clone()))
-                .collect();
-            if let Some(deps) = r.data["depends_on"].as_array() {
-                targets.extend(
-                    deps.iter()
-                        .filter_map(|v| v.as_str())
-                        .map(crate::objects::criterion_address),
-                );
-            }
-            for target in targets {
-                incoming
-                    .entry(crate::objects::resolve_address(w, &target).to_owned())
-                    .or_default()
-                    .insert(key.clone());
-            }
+    // Each object that points to a changed key by its parent or a depends_on edge changes
+    // too. One pass finds the objects that point to the changed keys, so a write of a leaf
+    // needs no index. After a pass that adds objects, an index of the targets reaches the
+    // rest of the tree.
+    let scan = || {
+        let now = state.objects.iter().map(|(k, o)| (state, k.as_str(), o));
+        now.chain(gone.iter().map(|(k, o)| (previous, *k, *o)))
+    };
+    let mut added = vec![];
+    for (w, key, o) in scan() {
+        if !changed.contains(key) && targets(w, o).iter().any(|t| changed.contains(t.as_ref())) {
+            added.push(key);
         }
     }
-    let mut queue: VecDeque<String> = changed.iter().cloned().collect();
-    while let Some(key) = queue.pop_front() {
-        for source in incoming.get(&key).into_iter().flatten() {
-            if changed.insert(source.clone()) {
-                queue.push_back(source.clone());
-            }
+    if added.is_empty() {
+        return Ok(Some(changed));
+    }
+    let mut incoming: BTreeMap<std::borrow::Cow<str>, Vec<&str>> = BTreeMap::new();
+    for (w, key, o) in scan() {
+        for target in targets(w, o) {
+            incoming.entry(target).or_default().push(key);
+        }
+    }
+    while let Some(key) = added.pop() {
+        if changed.insert(key.to_owned()) {
+            added.extend(incoming.get(key).into_iter().flatten());
         }
     }
     Ok(Some(changed))
@@ -185,4 +194,24 @@ pub(crate) fn trim(value: &mut Value) -> Result<()> {
         .and_then(|r| r.last())
         .context("state entry has no revision")?]);
     Ok(())
+}
+
+/// The keys that an object points to by its parent and its depends_on edges, also the legacy
+/// list in data, by their current addresses.
+fn targets<'a>(w: &'a Workspace, o: &'a crate::objects::Object) -> Vec<std::borrow::Cow<'a, str>> {
+    let r = o.current();
+    let edges = r.parent.iter().chain(r.depends_on().map(|e| &e.to));
+    let mut out: Vec<std::borrow::Cow<str>> = edges
+        .map(|t| crate::objects::resolve_address(w, t).into())
+        .collect();
+    let legacy = r.data["depends_on"].as_array().into_iter().flatten();
+    for d in legacy.filter_map(|v| v.as_str()) {
+        let target = crate::objects::criterion_address(d);
+        out.push(
+            crate::objects::resolve_address(w, &target)
+                .to_owned()
+                .into(),
+        );
+    }
+    out
 }

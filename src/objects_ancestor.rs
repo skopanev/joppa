@@ -68,7 +68,7 @@ pub(crate) fn mark_contract(
     let Some(new) = candidate
         .objects
         .get_mut(&target)
-        .and_then(|o| o.revisions.last_mut())
+        .and_then(|o| std::sync::Arc::make_mut(o).revisions.last_mut())
     else {
         return;
     };

@@ -94,7 +94,9 @@ pub fn archive(
 
     let parent = next.parent.clone();
     let inbox = input_type(w, kind);
-    w.objects.get_mut(&target).unwrap().revisions.push(next);
+    std::sync::Arc::make_mut(w.objects.get_mut(&target).unwrap())
+        .revisions
+        .push(next);
     w.archived_objects.insert(target.clone());
     if !commands::rule_applies(w, commands::LIST_SAVE_RESET, position) {
         return Ok(());

@@ -65,7 +65,7 @@ pub(crate) fn save_into(
         !w.documents_migrated || !w.object_aliases.contains_key(&key),
         "object address is a historical alias"
     );
-    let old = w.objects.get(&key).cloned();
+    let old = w.objects.get(&key).map(|o| Object::clone(o));
     ensure!(
         old.as_ref().map_or(0, |o| o.current().revision) == *revision,
         "stale object revision; read the object again"
@@ -173,7 +173,7 @@ pub(crate) fn save_into(
         .map(|o| o.current().data.clone())
         .unwrap_or_else(|| data.clone());
     // A custom parent changes grouping. The legacy semantic ancestor remains explicit.
-    let mut object = w.objects.get(&key).cloned().unwrap_or_else(|| Object {
+    let mut object = old.clone().unwrap_or_else(|| Object {
         id: id.clone(),
         kind: kind.clone(),
         revisions: vec![],
@@ -243,7 +243,7 @@ pub(crate) fn save_into(
         present: true,
         contract: None,
     });
-    w.objects.insert(key.clone(), object);
+    w.objects.insert(key.clone(), std::sync::Arc::new(object));
     crate::relations::validate(w, &key, &relations, &kept)?;
     Ok(true)
 }

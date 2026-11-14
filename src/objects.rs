@@ -37,6 +37,9 @@ pub use criterion_address::*;
 #[path = "objects_sync_with.rs"]
 mod sync_with;
 pub(crate) use sync_with::*;
+#[path = "objects_sync_scope.rs"]
+mod sync_scope;
+pub(crate) use sync_scope::{Scope, Snapshot};
 #[path = "objects_validate_links.rs"]
 mod validate_links;
 pub(crate) use validate_links::*;

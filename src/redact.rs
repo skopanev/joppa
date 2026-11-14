@@ -38,7 +38,7 @@ pub fn redact(
     crate::commands::nonempty(fragment)?;
     crate::commands::nonempty(reason)?;
     let key = crate::objects::resolve_address(w, target).to_owned();
-    let object = w.objects.get_mut(&key).context("unknown object")?;
+    let object = std::sync::Arc::make_mut(w.objects.get_mut(&key).context("unknown object")?);
     // The state holds the loaded revisions; the store masks the stored past revisions too.
     for revision in &mut object.revisions {
         mask(&mut revision.data, fragment);

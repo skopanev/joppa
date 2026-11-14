@@ -138,7 +138,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         })
         .collect();
     for (key, tests) in lists {
-        let o = w.objects.get_mut(&key).expect("listed object");
+        let o = std::sync::Arc::make_mut(w.objects.get_mut(&key).expect("listed object"));
         let mut revision = o.current().clone();
         let contract = crate::objects::contract_revision(o);
         revision.data["tests"] = serde_json::json!(tests);

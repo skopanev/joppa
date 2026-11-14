@@ -15,7 +15,7 @@ pub(crate) async fn full(
         match section.as_str() {
             "requirements" => {
                 let r: crate::model::Revision = serde_json::from_str(row.get(2))?;
-                if let Some(q) = state.requirements.get_mut(&key) {
+                if let Some(q) = state.requirements.get_mut(&key).map(std::sync::Arc::make_mut) {
                     q.revisions.retain(|old| old.number != r.number);
                     q.revisions.push(r);
                     q.revisions.sort_by_key(|r| r.number);
@@ -33,7 +33,7 @@ pub(crate) async fn full(
     for row in client.query("SELECT address,document::text FROM joppa.object_revisions WHERE workspace=$1 ORDER BY address,revision", &[&workspace]).await? {
         let key: String = row.get(0);
         let r: crate::objects::ObjectRevision = serde_json::from_str(row.get(1))?;
-        if let Some(o) = state.objects.get_mut(&key) {
+        if let Some(o) = state.objects.get_mut(&key).map(std::sync::Arc::make_mut) {
             o.revisions.retain(|old| old.revision != r.revision);
             o.revisions.push(r);
             o.revisions.sort_by_key(|r| r.revision);

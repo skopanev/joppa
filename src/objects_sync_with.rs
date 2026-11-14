@@ -4,6 +4,7 @@ use super::*;
 /// `sync` that can leave unchanged sibling criteria of a revised specification alone.
 /// With `force_siblings`, every criterion of the specification gets a new revision.
 /// `spec_reason` replaces the reason of the new specification revision.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn sync_with(
     w: &mut Workspace,
     actor: &str,
@@ -12,9 +13,20 @@ pub(crate) fn sync_with(
     at: &str,
     force_siblings: bool,
     spec_reason: Option<&str>,
+    scope: Option<&Scope>,
 ) {
     crate::probe::count(&crate::probe::SYNC);
-    let rows = document_rows(w);
+    // A scope builds the rows of its requirements only, see objects_sync_scope.rs.
+    let rows = match scope {
+        Some(scope) => {
+            let mut rows = BTreeMap::new();
+            requirement_rows(w, &scope.requirements, &mut |kind, id, parent, data| {
+                rows.insert(address(kind, id), (kind.into(), parent, data));
+            });
+            rows
+        }
+        None => document_rows(w),
+    };
     let rule = crate::commands::FORCED_KEEPS_CONTRACT;
     let keeps_contract = crate::commands::epoch_reached(w, rule, position);
     let reason = serde_json::to_value(command)
@@ -45,15 +57,18 @@ pub(crate) fn sync_with(
         {
             continue;
         }
-        let obj = w.objects.entry(key.clone()).or_insert_with(|| Object {
-            kind: kind.clone(),
-            id: key.split_once(':').unwrap().1.into(),
-            revisions: vec![],
-            parent_override: false,
+        let obj = w.objects.entry(key.clone()).or_insert_with(|| {
+            std::sync::Arc::new(Object {
+                kind: kind.clone(),
+                id: key.split_once(':').unwrap().1.into(),
+                revisions: vec![],
+                parent_override: false,
+            })
         });
+        // The object stays shared until a change below copies it.
         if matches!(command,Command::Revise(crate::commands::ReviseOp {req,capability,..}) if key==&requirement_address(req) && capability.as_ref().is_some_and(|cap|obj.revisions.last().is_some_and(|r|r.parent.as_deref()!=Some(&address("capability",cap)))))
         {
-            obj.parent_override = false;
+            std::sync::Arc::make_mut(obj).parent_override = false;
         }
         // The migrated specification owns its parent through both sync passes.
         // Only an explicit legacy grouping change can replace that parent here.
@@ -152,29 +167,36 @@ pub(crate) fn sync_with(
                 .filter(|v| v.data == data && v.parent == parent && v.present)
                 .filter(|_| keeps_contract)
                 .map(|v| [revision, contract_of(v)]);
-            obj.revisions.push(ObjectRevision {
-                revision,
-                schema_revision,
-                parent,
-                data: data.clone(),
-                relations,
-                older_links,
-                actor: actor.into(),
-                alias: w.alias.clone(),
-                at: at.into(),
-                position,
-                reason: spec_reason
-                    .filter(|_| spec)
-                    .map_or_else(|| reason.clone(), str::to_owned),
-                present: true,
-                contract,
-            });
+            std::sync::Arc::make_mut(obj)
+                .revisions
+                .push(ObjectRevision {
+                    revision,
+                    schema_revision,
+                    parent,
+                    data: data.clone(),
+                    relations,
+                    older_links,
+                    actor: actor.into(),
+                    alias: w.alias.clone(),
+                    at: at.into(),
+                    position,
+                    reason: spec_reason
+                        .filter(|_| spec)
+                        .map_or_else(|| reason.clone(), str::to_owned),
+                    present: true,
+                    contract,
+                });
         }
     }
     let roles = schema(w).types;
     // The loop reads the legacy types for each object, so it builds them once.
     let legacy = legacy_defaults();
+    // A scope can retire only the old row keys of its requirements.
+    let keys = scope.map(|s| &s.old_keys);
     for (key, obj) in &mut w.objects {
+        if keys.is_some_and(|k| !k.contains(key)) {
+            continue;
+        }
         if (legacy.contains_key(&obj.kind)
             || roles
                 .get(&obj.kind)
@@ -193,7 +215,7 @@ pub(crate) fn sync_with(
             r.at = at.into();
             r.position = position;
             r.reason = reason.clone();
-            obj.revisions.push(r);
+            std::sync::Arc::make_mut(obj).revisions.push(r);
         }
     }
 }

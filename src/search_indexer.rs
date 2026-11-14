@@ -219,7 +219,7 @@ fn answered(error: &anyhow::Error) -> bool {
 fn target(row: &Row) -> (String, &'static str) {
     if row.table == "search_documents" {
         (
-            "workspace=$1 AND kind||':'||local_id=$2 AND content_hash=$3 AND $4::int=0".into(),
+            "workspace=$1 AND kind=split_part($2,':',1) AND local_id=substr($2,strpos($2,':')+1) AND content_hash=$3 AND $4::int=0".into(),
             "search_documents",
         )
     } else {

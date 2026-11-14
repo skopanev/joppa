@@ -173,9 +173,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         revision.actor = actor.into();
         revision.reason = REASON.into();
         revision.at = at.into();
-        w.objects
-            .get_mut(&key)
-            .expect("criterion")
+        std::sync::Arc::make_mut(w.objects.get_mut(&key).expect("criterion"))
             .revisions
             .push(revision);
     }

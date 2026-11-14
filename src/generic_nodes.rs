@@ -53,7 +53,12 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
     }
     let schema_revision = crate::objects::schema(w).revision;
     for (key, change) in changes {
-        let Some(o) = w.objects.get_mut(&key).filter(|o| o.current().present) else {
+        let Some(o) = w
+            .objects
+            .get_mut(&key)
+            .filter(|o| o.current().present)
+            .map(std::sync::Arc::make_mut)
+        else {
             continue;
         };
         let mut next = o.current().clone();

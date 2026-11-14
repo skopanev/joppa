@@ -73,7 +73,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         .filter_map(|(key, o)| Some((key.clone(), o.current().parent.clone()?)))
         .collect();
     for (key, parent) in moves {
-        let o = w.objects.get_mut(&key).expect("listed object");
+        let o = std::sync::Arc::make_mut(w.objects.get_mut(&key).expect("listed object"));
         let mut revision = o.current().clone();
         revision.parent = None;
         revision.link_related(&parent, true);

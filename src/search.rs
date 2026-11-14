@@ -150,7 +150,22 @@ pub(super) async fn project(
         attempts=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.attempts ELSE 0 END,
         last_error=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.last_error ELSE NULL END
       WHERE (search_documents.req,search_documents.revision,search_documents.title,search_documents.content) IS DISTINCT FROM (EXCLUDED.req,EXCLUDED.revision,EXCLUDED.title,EXCLUDED.content)", &[&workspace,&payload]).await?;
-    client.execute("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND ($3::text[] IS NULL OR d.kind||':'||d.local_id=ANY($3)) AND NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::text::jsonb) AS x(kind text,local_id text) WHERE x.kind=d.kind AND x.local_id=d.local_id)", &[&workspace,&payload,&selected.map(|s|s.iter().cloned().collect::<Vec<_>>())]).await?;
+    // The selected addresses name (kind, local_id) pairs, so the delete reads the primary key.
+    let kept = "NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::text::jsonb) AS x(kind text,local_id text) WHERE x.kind=d.kind AND x.local_id=d.local_id)";
+    match selected {
+        Some(selected) => {
+            let selected: Vec<&String> = selected.iter().collect();
+            client.execute(&format!("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND (d.kind,d.local_id) IN (SELECT split_part(a,':',1),substr(a,strpos(a,':')+1) FROM unnest($3::text[]) a) AND {kept}"), &[&workspace,&payload,&selected]).await?
+        }
+        None => {
+            client
+                .execute(
+                    &format!("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND {kept}"),
+                    &[&workspace, &payload],
+                )
+                .await?
+        }
+    };
     client.execute("INSERT INTO joppa.search_state(workspace,position,canonical_id,reference_prefix) VALUES($1,$2,$3,$4)
       ON CONFLICT(workspace) DO UPDATE SET position=EXCLUDED.position,canonical_id=EXCLUDED.canonical_id,reference_prefix=EXCLUDED.reference_prefix", &[&workspace,&(position as i64),&state.workspace_id.as_deref().unwrap_or(workspace),&state.reference_prefix.as_deref().unwrap_or(workspace)]).await?;
     Ok(())

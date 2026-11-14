@@ -120,6 +120,7 @@ pub(super) fn apply_withdraw_decision(
     let q = w
         .requirements
         .get_mut(req)
+        .map(std::sync::Arc::make_mut)
         .ok_or_else(|| anyhow::anyhow!("unknown REQ"))?;
     let c = q
         .comments

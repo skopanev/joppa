@@ -60,14 +60,14 @@ pub(super) fn apply_revise(w: &mut Workspace, actor: &str, command: &Command) ->
             );
         }
     }
-    let r = w
-        .requirements
-        .entry(req.clone())
-        .or_insert_with(|| Requirement {
+    let r = w.requirements.entry(req.clone()).or_insert_with(|| {
+        std::sync::Arc::new(Requirement {
             capability: capability.clone(),
             revisions: vec![],
             comments: BTreeMap::new(),
-        });
+        })
+    });
+    let r = std::sync::Arc::make_mut(r);
     ensure!(
         r.revisions.last().map_or(0, |r| r.number) == *expected_revision,
         "stale revision; read the card again"

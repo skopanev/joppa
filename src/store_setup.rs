@@ -106,6 +106,8 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/066_human_member_rights_epoch.sql"),
         include_str!("../migrations/067_no_work_ready.sql"),
         include_str!("../migrations/068_workspace_read_keys.sql"),
+        include_str!("../migrations/069_test_results_by_report.sql"),
+        include_str!("../migrations/070_state_sets.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

@@ -154,6 +154,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
     let schema_revision = schema(w).revision;
     let mut texts = BTreeMap::new();
     for (key, o) in w.objects.iter_mut() {
+        let o = std::sync::Arc::make_mut(o);
         let mut revision = o.current().clone();
         if !to_body(&mut revision.data) {
             continue;
@@ -197,6 +198,7 @@ fn typed_texts(w: &mut Workspace, texts: &BTreeMap<String, String>) {
         }
     }
     for (id, q) in w.requirements.iter_mut() {
+        let q = std::sync::Arc::make_mut(q);
         let Some(r) = q.revisions.last_mut() else {
             continue;
         };

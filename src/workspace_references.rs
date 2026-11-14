@@ -74,7 +74,7 @@ pub fn remove(
     }
     let schema_revision = crate::objects::schema(w).revision;
     for key in bound(w, workspace) {
-        let object = w.objects.get_mut(&key).expect("bound object");
+        let object = std::sync::Arc::make_mut(w.objects.get_mut(&key).expect("bound object"));
         let mut next = object.current().clone();
         if let Some(data) = next.data.as_object_mut() {
             data.remove("workspace");

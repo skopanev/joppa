@@ -62,7 +62,6 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
     let mut rows = BTreeMap::new();
     // After migrate_body the typed description and contract are data.body.
     let text = crate::body_migration::text_field(w, "description");
-    let contract = crate::body_migration::text_field(w, "contract");
     let mut put = |kind: &str, id: &str, parent: Option<String>, data: Value| {
         rows.insert(address(kind, id), (kind.into(), parent, data));
     };
@@ -98,7 +97,35 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
             json!({"title":id,"repository":p,"owner":w.admin}),
         );
     }
-    for (id, q) in &w.requirements {
+    requirement_rows(w, &w.requirements, &mut put);
+    for (id, i) in &w.intake {
+        put(
+            "intake",
+            id,
+            None,
+            json!({"title":id,"body":i.said,"owner":i.owner.as_ref().unwrap_or(&w.admin),"author":i.author}),
+        );
+        for (pid, p) in &i.points {
+            put(
+                "point",
+                &format!("{id}/{pid}"),
+                Some(address("intake", id)),
+                json!({"title":p.said,"owner":i.owner.as_ref().unwrap_or(&w.admin),"kind":p.kind,"answers":p.answers,"outcome":p.outcome,"reason":p.reason,"requirement":p.requirement}),
+            );
+        }
+    }
+    rows
+}
+
+/// The ledger rows of `requirements`: each requirement with its criteria and its Tasks.
+pub(crate) fn requirement_rows(
+    w: &Workspace,
+    requirements: &BTreeMap<String, std::sync::Arc<crate::model::Requirement>>,
+    put: &mut impl FnMut(&str, &str, Option<String>, Value),
+) {
+    let text = crate::body_migration::text_field(w, "description");
+    let contract = crate::body_migration::text_field(w, "contract");
+    for (id, q) in requirements {
         if let Some(r) = q.revisions.last() {
             let req_address = requirement_address(id);
             let (req_kind, req_id) = req_address.split_once(':').unwrap();
@@ -138,23 +165,6 @@ pub(crate) fn document_rows(w: &Workspace) -> BTreeMap<String, (String, Option<S
             }
         }
     }
-    for (id, i) in &w.intake {
-        put(
-            "intake",
-            id,
-            None,
-            json!({"title":id,"body":i.said,"owner":i.owner.as_ref().unwrap_or(&w.admin),"author":i.author}),
-        );
-        for (pid, p) in &i.points {
-            put(
-                "point",
-                &format!("{id}/{pid}"),
-                Some(address("intake", id)),
-                json!({"title":p.said,"owner":i.owner.as_ref().unwrap_or(&w.admin),"kind":p.kind,"answers":p.answers,"outcome":p.outcome,"reason":p.reason,"requirement":p.requirement}),
-            );
-        }
-    }
-    rows
 }
 
 /// The parent of `key` in the document ledger (`document_rows`), or None when the ledger has
@@ -218,5 +228,15 @@ pub(crate) fn document_parent(w: &Workspace, key: &str) -> Option<Option<String>
 
 /// Replay old commands into the same document ledger. Process evidence stays in its original revision.
 pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at: &str) {
-    sync_with(w, actor, command, position, at, true, None);
+    sync_with(w, actor, command, position, at, true, None, None);
+}
+
+/// `sync` with the rows of `scope` only (objects_sync_scope.rs).
+pub(crate) fn sync_scoped(
+    w: &mut Workspace,
+    (actor, command): (&str, &Command),
+    (position, at): (u64, &str),
+    scope: &Scope,
+) {
+    sync_with(w, actor, command, position, at, true, None, Some(scope));
 }

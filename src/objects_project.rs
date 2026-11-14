@@ -14,10 +14,11 @@ pub(in crate::store) async fn project(
         .await?.iter().map(|row| Ok((row.get(0),serde_json::from_str(row.get(1))?)))
         .collect::<Result<_>>()?;
     let prefix = state.reference_prefix.as_deref().unwrap_or(workspace);
+    // A write reads the IDs of its selected objects only.
     let registered: std::collections::BTreeSet<(String, String)> = client
         .query(
-            "SELECT kind,local_id FROM joppa.item_ids WHERE workspace=$1 AND namespace=$2",
-            &[&workspace, &prefix],
+            "SELECT kind,local_id FROM joppa.item_ids WHERE workspace=$1 AND namespace=$2 AND ($3::text[] IS NULL OR (kind,local_id) IN (SELECT split_part(a,':',1),substr(a,strpos(a,':')+1) FROM unnest($3::text[]) a))",
+            &[&workspace, &prefix, &selected.map(|s| s.iter().collect::<Vec<_>>())],
         )
         .await?
         .iter()
@@ -39,7 +40,7 @@ pub(in crate::store) async fn project(
                 | Command::MigrateDecisionRequired {}
         )
     });
-    // A redaction rewrites the stored revisions of its object; nothing else may.
+    // A redaction rewrites the stored revisions of its object. Nothing else may.
     let redactions: Vec<(String, String)> = events
         .iter()
         .filter_map(|e| match &e.command {
