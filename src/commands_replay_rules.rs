@@ -49,7 +49,11 @@ pub const RELATIONS_RESET: &str = "relations_reset";
 /// An older save keeps the older rule in a replay: only the creator of the workspace confirmed.
 pub const HUMAN_MEMBER_RIGHTS: &str = "human_member_rights";
 
-pub const REPLAY_RULES: [&str; 12] = [
+/// From this rule on, a revision that a write copies from the last one, such as an archive or
+/// a restore, takes the alias of that write. An older event keeps the copied alias in a replay.
+pub const OWN_ALIAS: &str = "own_alias";
+
+pub const REPLAY_RULES: [&str; 13] = [
     RESET_CHANGED,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
@@ -62,6 +66,7 @@ pub const REPLAY_RULES: [&str; 12] = [
     SOURCE_CHANGE_RESET,
     RELATIONS_RESET,
     HUMAN_MEMBER_RIGHTS,
+    OWN_ALIAS,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

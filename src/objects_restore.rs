@@ -60,6 +60,9 @@ pub fn restore(
     next.actor = actor.to_owned();
     next.reason = reason.clone();
     next.at = at.to_owned();
+    if commands::rule_applies(w, commands::OWN_ALIAS, position) {
+        next.alias = w.alias.clone();
+    }
 
     std::sync::Arc::make_mut(w.objects.get_mut(&target).unwrap())
         .revisions

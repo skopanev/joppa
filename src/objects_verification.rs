@@ -91,6 +91,9 @@ pub fn archive(
     next.actor = actor.to_owned();
     next.reason = reason.clone();
     next.at = at.to_owned();
+    if commands::rule_applies(w, commands::OWN_ALIAS, position) {
+        next.alias = w.alias.clone();
+    }
 
     let parent = next.parent.clone();
     let inbox = input_type(w, kind);

@@ -213,6 +213,9 @@ pub fn migrate_notes(w: &mut Workspace, actor: &str, position: u64, at: &str) ->
         retired.at = at.into();
         retired.position = position;
         retired.reason = reason.into();
+        if commands::rule_applies(&candidate, commands::OWN_ALIAS, position) {
+            retired.alias = candidate.alias.clone();
+        }
         std::sync::Arc::make_mut(candidate.objects.get_mut(&key).unwrap())
             .revisions
             .push(retired);

@@ -73,6 +73,8 @@ pub fn remove(
         }
     }
     let schema_revision = crate::objects::schema(w).revision;
+    let own_alias = crate::commands::rule_applies(w, crate::commands::OWN_ALIAS, position);
+    let alias = w.alias.clone();
     for key in bound(w, workspace) {
         let object = std::sync::Arc::make_mut(w.objects.get_mut(&key).expect("bound object"));
         let mut next = object.current().clone();
@@ -85,6 +87,9 @@ pub fn remove(
         next.actor = actor.to_owned();
         next.reason = reason.to_owned();
         next.at = at.to_owned();
+        if own_alias {
+            next.alias = alias.clone();
+        }
         object.revisions.push(next);
         crate::objects::reset_criteria(w, &key, at)?;
     }

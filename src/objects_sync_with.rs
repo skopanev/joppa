@@ -189,6 +189,8 @@ pub(crate) fn sync_with(
         }
     }
     let roles = schema(w).types;
+    let own_alias = commands::rule_applies(w, commands::OWN_ALIAS, position);
+    let alias = w.alias.clone();
     // The loop reads the legacy types for each object, so it builds them once.
     let legacy = legacy_defaults();
     // A scope can retire only the old row keys of its requirements.
@@ -215,6 +217,9 @@ pub(crate) fn sync_with(
             r.at = at.into();
             r.position = position;
             r.reason = reason.clone();
+            if own_alias {
+                r.alias = alias.clone();
+            }
             std::sync::Arc::make_mut(obj).revisions.push(r);
         }
     }
