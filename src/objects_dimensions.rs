@@ -9,6 +9,9 @@ use super::tone_items::{Graph, graph, tone_of};
 use super::*;
 use crate::filter_dimensions as dims;
 use std::collections::{BTreeMap, BTreeSet};
+#[path = "objects_dimensions_delta.rs"]
+mod delta;
+pub(in crate::store) use delta::update;
 
 /// Store the dimension values and the combination tones of each node of the workspace.
 pub(in crate::store) async fn project(
