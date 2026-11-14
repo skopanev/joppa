@@ -113,22 +113,27 @@ pub(crate) fn changed_entries(state: &Workspace, previous: Option<&Workspace>) -
     let notes = (&state.notes, &old.notes);
     let same = |new: &Arc<_>, old: &Arc<_>| Arc::ptr_eq(new, old) || new == old;
     section(&mut diff, "notes", notes, same, plain)?;
-    let boundaries = (&state.criterion_boundaries, &old.criterion_boundaries);
-    section(
-        &mut diff,
-        "criterion_boundaries",
-        boundaries,
-        PartialEq::eq,
-        plain,
-    )?;
-    let titles = (&state.former_test_titles, &old.former_test_titles);
-    section(
-        &mut diff,
-        "former_test_titles",
-        titles,
-        PartialEq::eq,
-        plain,
-    )?;
+    // A shared map that the write did not change is the same allocation.
+    if !Arc::ptr_eq(&state.criterion_boundaries, &old.criterion_boundaries) {
+        let boundaries = (&*state.criterion_boundaries, &*old.criterion_boundaries);
+        section(
+            &mut diff,
+            "criterion_boundaries",
+            boundaries,
+            PartialEq::eq,
+            plain,
+        )?;
+    }
+    if !Arc::ptr_eq(&state.former_test_titles, &old.former_test_titles) {
+        let titles = (&*state.former_test_titles, &*old.former_test_titles);
+        section(
+            &mut diff,
+            "former_test_titles",
+            titles,
+            PartialEq::eq,
+            plain,
+        )?;
+    }
     // Each address of a set is one row with the value true (store_state_current.rs).
     for (name, new, old) in [
         (
@@ -142,6 +147,9 @@ pub(crate) fn changed_entries(state: &Workspace, previous: Option<&Workspace>) -
             &old.archived_objects,
         ),
     ] {
+        if Arc::ptr_eq(new, old) {
+            continue;
+        }
         for key in new.difference(old) {
             diff.0.insert((name.into(), key.clone()), Value::Bool(true));
         }

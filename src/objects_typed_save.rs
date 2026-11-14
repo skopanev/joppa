@@ -31,7 +31,7 @@ pub(crate) fn typed_save(
         let snapshot = Snapshot::of(w, Some(key));
         // A criterion that moves to another requirement leaves the old one first.
         let out = criterion_move_out(w, kind, id, &cmd, reason)?;
-        w.document_overrides.remove(key);
+        std::sync::Arc::make_mut(&mut w.document_overrides).remove(key);
         if let Some(out) = out {
             commands::apply_inner(w, actor, &out, position, at)?;
         }
@@ -56,7 +56,7 @@ pub(crate) fn typed_save(
             scope.as_ref(),
         );
     } else {
-        w.document_overrides.insert(key.to_owned());
+        std::sync::Arc::make_mut(&mut w.document_overrides).insert(key.to_owned());
         let owner = string(data, "owner")?;
         commands::human(w, &owner)?;
         if ["project", "intake", "point"].contains(&kind.as_str()) && !w.schema_migrated {
@@ -205,42 +205,5 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
         })
         .map(|(key, _)| key.clone())
         .collect();
-    for key in changed {
-        reset_criteria(w, &key, at)?;
-    }
-    Ok(())
-}
-
-/// Reset each present criterion and test node at and below `root` after a change recorded at `at`.
-/// Reports received at or before `at` stop counting for it. A later boundary replaces an
-/// earlier one.
-pub fn reset_criteria(w: &mut Workspace, root: &str, at: &str) -> Result<()> {
-    let root = resolve_address(w, root).to_owned();
-    let types = schema(w).types;
-    let criteria: Vec<String> = w
-        .objects
-        .iter()
-        .filter(|(key, o)| {
-            o.current().present
-                && types
-                    .get(&o.kind)
-                    .is_some_and(|t| t.role == "ac" || t.role == crate::test_nodes::ROLE)
-                && within(w, key, &root)
-        })
-        .map(|(key, _)| key.clone())
-        .collect();
-    for key in criteria {
-        // An earlier or equal time keeps the stored boundary.
-        let later = w.criterion_boundaries.get(&key).is_some_and(|old| {
-            use crate::ac_tests::Boundary;
-            matches!(
-                (Boundary::read(Some(old)), Boundary::read(Some(at))),
-                (Boundary::After(old), Boundary::After(new)) if old >= new
-            )
-        });
-        if !later {
-            w.criterion_boundaries.insert(key, at.into());
-        }
-    }
-    Ok(())
+    reset_below(w, &changed, at)
 }

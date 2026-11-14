@@ -1,4 +1,5 @@
-//! A write to a large workspace with a filter dimension, many recorded results and many notes.
+//! A write to a large workspace with a filter dimension, a computed field, many recorded
+//! results, notes, criterion boundaries and former test titles.
 #[path = "common/dims_tree.rs"]
 mod dims_tree;
 use anyhow::{Result, ensure};
@@ -15,18 +16,32 @@ async fn timed(pool: &Pool, ws: &str, command: Value) -> Result<f64> {
     Ok(start.elapsed().as_secs_f64() * 1000.0)
 }
 
-/// A save of the body of `ac`.
-async fn save(pool: &Pool, ws: &str, ac: &str, body: &str) -> Result<Value> {
-    let address = format!("ac:{ac}");
+/// A save of `address` that changes `data`.
+async fn save(pool: &Pool, ws: &str, address: &str, data: Value) -> Result<Value> {
     let scope = store::ObjectScope {
-        address: Some(&address),
+        address: Some(address),
         ..Default::default()
     };
     let object = store::read_objects(pool, ws, "owner", &scope).await?;
+    let (kind, id) = address.split_once(':').unwrap();
     Ok(
-        json!({"op":"save_object","kind":"ac","id":ac,"revision":object["current_revision"],
-        "parent":object["document"]["parent"],"data":{"body":body},"reason":"Clarify"}),
+        json!({"op":"save_object","kind":kind,"id":id,"revision":object["current_revision"],
+        "parent":object["document"]["parent"],"data":data,"reason":"Clarify"}),
     )
+}
+
+/// The saves of each address of `addresses` that change `data`, in batches.
+async fn save_all(
+    pool: &Pool,
+    ws: &str,
+    addresses: &[String],
+    data: impl Fn(&str) -> Value,
+) -> Result<()> {
+    let mut commands = vec![];
+    for address in addresses {
+        commands.push(save(pool, ws, address, data(address)).await?);
+    }
+    batch(pool, ws, commands).await
 }
 
 // ac:0bpoijs4
@@ -57,13 +72,39 @@ async fn a_write_on_a_large_workspace_with_a_dimension_takes_at_most_100_ms() ->
         })
         .collect();
     batch(&pool, &ws, notes).await?;
+    // Each requirement changes once, so each criterion below it gets a boundary.
+    let requirements: Vec<String> = (0..960)
+        .map(|n| format!("requirement:d{}c{}r{}", n / 30, n / 6 % 5, n % 6))
+        .collect();
+    save_all(
+        &pool,
+        &ws,
+        &requirements,
+        |_| json!({"body":"The changed rule"}),
+    )
+    .await?;
+    // 4000 test nodes get a new title, so each keeps its former title.
+    let renamed: Vec<String> = tests
+        .iter()
+        .take(4000)
+        .map(|t| format!("test:{}t", &t[15..]))
+        .collect();
+    save_all(
+        &pool,
+        &ws,
+        &renamed,
+        |a| json!({"title":format!("tests/big.rs > {} again", &a[5..])}),
+    )
+    .await?;
     // The first write of a server process loads the workspace into memory.
-    timed(&pool, &ws, save(&pool, &ws, "d0c0r0a0", "Warm").await?).await?;
+    let warm = save(&pool, &ws, "ac:d0c0r0a0", json!({"body":"Warm"})).await?;
+    timed(&pool, &ws, warm).await?;
     let mut times = vec![];
     for i in 0..5 {
         let ac = format!("d1c2r3a{i}");
         let body = format!("The new rule {i}");
-        times.push(timed(&pool, &ws, save(&pool, &ws, &ac, &body).await?).await?);
+        let changed = save(&pool, &ws, &format!("ac:{ac}"), json!({"body":body})).await?;
+        times.push(timed(&pool, &ws, changed).await?);
         let new = node("test", &format!("{ac}x"), Some(format!("ac:{ac}")));
         times.push(timed(&pool, &ws, new).await?);
         let note = json!({"op":"note","target":format!("ac:{ac}"),"id":"seen","text":"Seen"});

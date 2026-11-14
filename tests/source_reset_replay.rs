@@ -41,7 +41,7 @@ async fn replay(
         )
         .with_context(|| format!("replay of event {position}"))?;
     }
-    Ok(state.criterion_boundaries)
+    Ok((*state.criterion_boundaries).clone())
 }
 
 /// The stored criterion_boundaries of the live state.

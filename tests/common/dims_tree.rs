@@ -27,18 +27,27 @@ pub fn node(kind: &str, id: &str, parent: Option<String>) -> Value {
         "data":{"title":format!("{kind} {id}"),"owner":"owner","body":"The rule"},"reason":"Create"})
 }
 
+/// The values of the field stage, the first value first in rollup priority.
+const STAGES: [&str; 3] = ["doing", "todo", "done"];
+
+/// The field stage of a type: its own value, or the rollup of its children.
+fn stage(from: &str) -> Value {
+    json!({"stage":{"type":"enum","values":STAGES,"from":from}})
+}
+
 /// A workspace of `domains` x 5 capabilities x 6 requirements x `acs` criteria, each with one
-/// test node, and the filter dimension env with three values.
+/// test node, the filter dimension env with three values, and the field stage that each
+/// criterion sets and each node above it computes from its children.
 pub async fn tree(pool: &Pool, domains: usize, acs: usize) -> Result<(String, Vec<String>)> {
     let ws = format!("write-dims-{}", uuid::Uuid::new_v4().simple());
     let op = json!({"op":"workspace","title":"Write dims"});
     store::execute_input(pool, &ws, "owner", "workspace", &op).await?;
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     batch(pool, &ws, vec![json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"reason":"Configure","types":{
-        "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[]},
-        "capability":{"title":"Capabilities","role":"group","status":"children","parents":["domain"]},
-        "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["capability"]},
-        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"]},
+        "domain":{"title":"Domains","role":"group","status":"children","root":true,"parents":[],"fields":stage("children")},
+        "capability":{"title":"Capabilities","role":"group","status":"children","parents":["domain"],"fields":stage("children")},
+        "requirement":{"title":"Requirements","role":"requirement","status":"children","parents":["capability"],"fields":stage("children")},
+        "ac":{"title":"Criteria","role":"ac","status":"children","parents":["requirement"],"fields":stage("own")},
         "test":{"title":"Tests","role":"test","status":"own","parents":["ac"],"title_preview_length":400}}})]).await?;
     let tree = store::tree_schema(pool, &ws, "owner", None).await?;
     let mut rules = tree["schema"]["test_results"].clone();
@@ -65,6 +74,7 @@ pub async fn tree(pool: &Pool, domains: usize, acs: usize) -> Result<(String, Ve
                     if a % 3 == 0 {
                         ac_node["data"]["env"] = json!("prod");
                     }
+                    ac_node["data"]["stage"] = json!(STAGES[a % 3]);
                     commands.push(ac_node);
                     let mut test = node("test", &format!("{ac}t"), Some(format!("ac:{ac}")));
                     let name = format!("tests/big.rs > {ac}");

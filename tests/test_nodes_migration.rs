@@ -42,8 +42,7 @@ fn the_migration_turns_each_test_list_into_test_nodes() {
     let before = w.state.objects["ac:ios"].clone();
     // The records before the migration keep counting: it resets no criterion and no node.
     let boundary = "2025-12-31T00:00:00Z".to_owned();
-    w.state
-        .criterion_boundaries
+    std::sync::Arc::make_mut(&mut w.state.criterion_boundaries)
         .insert("ac:ios".into(), boundary.clone());
     internal(&mut w, "migrate_test_nodes").unwrap();
     assert_eq!(w.state.criterion_boundaries["ac:ios"], boundary);

@@ -110,13 +110,12 @@ pub(crate) fn affected(
         }
     }
     // A source reset gives a new boundary to criteria beside the changed node.
-    for key in state
-        .criterion_boundaries
-        .keys()
-        .chain(previous.criterion_boundaries.keys())
-    {
-        if state.criterion_boundaries.get(key) != previous.criterion_boundaries.get(key) {
-            changed.insert(key.clone());
+    let (new, old) = (&state.criterion_boundaries, &previous.criterion_boundaries);
+    if !std::sync::Arc::ptr_eq(new, old) {
+        for pair in crate::map_pairs::pairs(old, new) {
+            if pair.old != pair.new {
+                changed.insert(pair.key.to_owned());
+            }
         }
     }
     for (key, notes) in &state.notes {

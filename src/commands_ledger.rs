@@ -9,7 +9,9 @@ pub(super) fn snapshot(w: &Workspace, command: &Command) -> Option<crate::object
         Command::SaveObject(crate::commands::SaveObjectOp { kind, id, .. }) => {
             crate::objects::address(kind, id)
         }
-        Command::ArchiveObject { target, .. } => target.clone(),
+        Command::ArchiveObject { target, .. } | Command::RestoreObject { target, .. } => {
+            target.clone()
+        }
         _ => return None,
     };
     let own = crate::objects::resolve_address(w, &own).to_owned();

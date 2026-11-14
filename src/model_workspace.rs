@@ -75,10 +75,10 @@ pub struct Workspace {
     pub prefix_from_title: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub documents_migrated: bool,
-    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
-    pub document_overrides: std::collections::BTreeSet<String>,
-    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
-    pub archived_objects: std::collections::BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "empty_set")]
+    pub document_overrides: std::sync::Arc<std::collections::BTreeSet<String>>,
+    #[serde(default, skip_serializing_if = "empty_set")]
+    pub archived_objects: std::sync::Arc<std::collections::BTreeSet<String>>,
     #[serde(default)]
     pub tree_schema: Vec<crate::objects::SchemaRevision>,
     #[serde(default)]
@@ -116,12 +116,12 @@ pub struct Workspace {
     pub ac_tests: BTreeMap<String, crate::ac_tests::AcTests>,
     /// The journal time of the latest change above or on each criterion.
     /// Reports received at or before it do not count for the criterion.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub criterion_boundaries: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "empty_map")]
+    pub criterion_boundaries: std::sync::Arc<BTreeMap<String, String>>,
     /// The earlier titles of each renamed test node, from the epoch of rename_keeps_results on.
     /// A result that an older record stored by one of these titles still counts for the node.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub former_test_titles: BTreeMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "empty_map")]
+    pub former_test_titles: std::sync::Arc<BTreeMap<String, Vec<String>>>,
     /// The links of each object to objects of other workspaces, by source address.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub remote_links: BTreeMap<String, crate::remote_links::RemoteLinks>,
@@ -209,4 +209,14 @@ pub struct CoverageReview {
     pub at: u64,
     pub reason: String,
     pub changes: Vec<Check>,
+}
+
+/// A shared set without entries, which a stored workspace leaves out.
+fn empty_set(set: &std::sync::Arc<std::collections::BTreeSet<String>>) -> bool {
+    set.is_empty()
+}
+
+/// A shared map without entries, which a stored workspace leaves out.
+fn empty_map<T>(map: &std::sync::Arc<BTreeMap<String, T>>) -> bool {
+    map.is_empty()
 }

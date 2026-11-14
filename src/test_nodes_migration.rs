@@ -107,7 +107,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
             };
             w.objects.insert(address.clone(), std::sync::Arc::new(node));
             if let Some(at) = &boundary {
-                w.criterion_boundaries.insert(address, at.clone());
+                std::sync::Arc::make_mut(&mut w.criterion_boundaries).insert(address, at.clone());
             }
         }
     }

@@ -15,27 +15,21 @@ struct Rest {
     consumers: BTreeMap<String, Consumer>,
     projects: BTreeMap<String, String>,
     intake: BTreeMap<String, Intake>,
-    document_overrides: BTreeSet<String>,
+    admin: String,
     tasks: Vec<String>,
     flags: [bool; 6],
     schema: Option<u32>,
 }
 
 impl Rest {
-    /// The inputs of `w`. The override of `own`, the object of the write, is no ledger input:
-    /// `Snapshot::scope` reads it.
-    fn of(w: &Workspace, own: Option<&str>) -> Self {
-        let mut document_overrides = w.document_overrides.clone();
-        if let Some(own) = own {
-            document_overrides.remove(own);
-        }
+    fn of(w: &Workspace) -> Self {
         Rest {
             domains: w.domains.clone(),
             capabilities: w.capabilities.clone(),
             consumers: w.consumers.clone(),
             projects: w.projects.clone(),
             intake: w.intake.clone(),
-            document_overrides,
+            admin: w.admin.clone(),
             tasks: w.task_process.keys().cloned().collect(),
             flags: [
                 w.generic_nodes,
@@ -50,10 +44,21 @@ impl Rest {
     }
 }
 
+/// The two sets hold the same addresses other than `own`, the object of the write, which
+/// `Snapshot::scope` reads.
+fn same_set(new: &Arc<BTreeSet<String>>, old: &Arc<BTreeSet<String>>, own: Option<&str>) -> bool {
+    Arc::ptr_eq(new, old)
+        || new
+            .symmetric_difference(old)
+            .all(|k| Some(k.as_str()) == own)
+}
+
 /// The ledger inputs before a write.
 pub(crate) struct Snapshot {
     requirements: BTreeMap<String, Arc<Requirement>>,
     rest: Rest,
+    overrides: Arc<BTreeSet<String>>,
+    archived: Arc<BTreeSet<String>>,
     own: Option<String>,
 }
 
@@ -68,14 +73,20 @@ impl Snapshot {
     pub(crate) fn of(w: &Workspace, own: Option<&str>) -> Self {
         Snapshot {
             requirements: w.requirements.clone(),
-            rest: Rest::of(w, own),
+            rest: Rest::of(w),
+            overrides: w.document_overrides.clone(),
+            archived: w.archived_objects.clone(),
             own: own.map(str::to_owned),
         }
     }
 
     /// The scope of the sync after the write, or None when the sync needs every row.
     pub(crate) fn scope(&self, w: &Workspace) -> Option<Scope> {
-        if Rest::of(w, self.own.as_deref()) != self.rest {
+        let own = self.own.as_deref();
+        if Rest::of(w) != self.rest
+            || !same_set(&w.document_overrides, &self.overrides, own)
+            || !same_set(&w.archived_objects, &self.archived, own)
+        {
             return None;
         }
         let keys = w.requirements.keys().chain(self.requirements.keys());

@@ -67,6 +67,6 @@ pub fn restore(
     std::sync::Arc::make_mut(w.objects.get_mut(&target).unwrap())
         .revisions
         .push(next);
-    w.archived_objects.remove(&target);
+    std::sync::Arc::make_mut(&mut w.archived_objects).remove(&target);
     Ok(())
 }

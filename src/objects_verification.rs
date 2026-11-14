@@ -100,7 +100,7 @@ pub fn archive(
     std::sync::Arc::make_mut(w.objects.get_mut(&target).unwrap())
         .revisions
         .push(next);
-    w.archived_objects.insert(target.clone());
+    std::sync::Arc::make_mut(&mut w.archived_objects).insert(target.clone());
     if !commands::rule_applies(w, commands::LIST_SAVE_RESET, position) {
         return Ok(());
     }

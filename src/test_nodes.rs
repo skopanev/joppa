@@ -214,7 +214,9 @@ pub fn keep_former_titles(
         })
         .collect();
     for (key, old) in renamed {
-        let titles = w.former_test_titles.entry(key).or_default();
+        let titles = std::sync::Arc::make_mut(&mut w.former_test_titles)
+            .entry(key)
+            .or_default();
         if !titles.contains(&old) {
             titles.push(old);
         }

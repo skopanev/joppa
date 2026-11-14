@@ -80,7 +80,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
         let archived = !next.present;
         o.revisions.push(next);
         if archived {
-            w.archived_objects.insert(key);
+            std::sync::Arc::make_mut(&mut w.archived_objects).insert(key);
         }
     }
     w.task_process.clear();
