@@ -151,6 +151,11 @@ async fn help_the_tools_the_instructions_and_the_guide_teach_relations() -> Resu
         "put_relations",
         "relations_of",
         "set_remote_links",
+        "id=\"data-reads\"",
+        "POST /api/data",
+        "jpr_...",
+        "Role guide",
+        "Agent lesson",
     ] {
         ensure!(guide.contains(word), "the guide does not name {word}");
     }

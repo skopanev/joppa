@@ -3,7 +3,9 @@
 ## Types and parents
 
 Call `joppa_tree` to read the workspace schema. Use `set_tree_schema` to replace it.
-The recommended recipe below has two verticals and two document types. The owner can change it.
+The recommended recipe below has two verticals and three supporting document types. A workspace
+can also add a `memory` branch for agent guidance, processes, rules and verified lessons. The
+owner can change it.
 
 - Product rules: `domain` → `capability` → `requirement` → `ac` → `test`.
 - Technical contracts: `tech` → `requirement` → `ac` → `test`. The roots of `tech` are areas
@@ -17,6 +19,8 @@ The recommended recipe below has two verticals and two document types. The owner
 - `inbox`: a raw incoming signal before analysis. `source`: an owner decision, a specification
   or an external standard with a fixed version. Each AC names its Sources in `sources`.
   `requirement`, `capability`, `domain` and `tech` compute `sources` from their children.
+- `consumer`: who uses the product, and for which purpose. With `status: "links"`, a Consumer
+  takes its status from the criteria that name it.
 
 ```json
 {
@@ -34,7 +38,8 @@ The recommended recipe below has two verticals and two document types. The owner
     "requirement": {"title": "Requirement", "badge": "REQ", "role": "requirement", "root": false, "parents": ["capability", "tech"], "status": "children",
       "references": {"sources": {"target": "source", "title": "Sources", "multiple": true, "from": "children"}}},
     "ac": {"title": "Acceptance Criterion", "badge": "AC", "role": "ac", "root": false, "parents": ["requirement"], "status": "children",
-      "references": {"sources": {"target": "source", "title": "Sources", "required": true, "multiple": true}}},
+      "references": {"sources": {"target": "source", "title": "Sources", "required": true, "multiple": true},
+        "consumer": {"target": "consumer", "title": "Used by", "required": false, "multiple": false}}},
     "test": {"title": "Tests", "badge": "TEST", "role": "test", "root": false, "parents": ["ac"], "status": "own", "title_max_length": 400,
       "fields": {"case": {"type": "enum", "values": ["nominal", "boundary", "off_nominal"]}, "command": {"type": "text"}},
       "required_fields": {"body": "a test node needs body: the inputs and the expected outcome"},
@@ -42,8 +47,10 @@ The recommended recipe below has two verticals and two document types. The owner
     "task": {"title": "Task", "role": "task", "root": false, "parents": ["ac"], "status": "none"},
     "inbox": {"title": "Inbox", "badge": "RAW", "role": "document", "root": true, "inbox": true, "status": "none", "parents": [], "field_max_length": 4096, "color": "#7664aa",
       "question": "What did the source report, and who sent it?"},
-    "source": {"title": "Source", "badge": "SRC", "role": "document", "root": true, "status": "none", "parents": ["source"], "field_max_length": 4096, "color": "#8a6d3b",
-      "question": "Which owner decision, specification or external standard grounds these rules, and at which version?"}
+    "source": {"title": "Source", "badge": "SRC", "role": "document", "root": true, "source": true, "status": "none", "parents": ["source"], "field_max_length": 4096, "color": "#8a6d3b",
+      "question": "Which owner decision, specification or external standard grounds these rules, and at which version?"},
+    "consumer": {"title": "Consumer", "badge": "USE", "role": "document", "root": true, "status": "links", "parents": [], "color": "#247eab",
+      "question": "Who uses the product, and for which purpose?"}
   }
 }
 ```
@@ -84,6 +91,49 @@ criteria that name it or link with it. `source: false` is not stored.
 The server refuses parent cycles.
 An object has one parent, or no parent when its type permits a root.
 Each document revision records its schema revision.
+
+## Agent memory and data trees
+
+A workspace can store agent guidance, processes, rules and verified lessons in its own tree
+instead of a separate memory database. Add a `memory` group and child document types with
+typed filter fields such as `project`, `role` and `module`:
+
+```json
+{
+  "op": "set_tree_schema",
+  "revision": 1,
+  "reason": "Add agent memory types",
+  "put_types": {
+    "memory": {"title": "Memory", "badge": "MEM", "role": "group", "root": true, "status": "none",
+      "parents": ["memory"], "field_max_length": 16384, "color": "#5b6f47",
+      "question": "Which agent contracts, rules or verified lessons does this group hold?"},
+    "guide": {"title": "Role guide", "role": "document", "root": false, "status": "none",
+      "parents": ["memory"], "field_max_length": 16384,
+      "fields": {"project": {"type": "list"}, "role": {"type": "list"}, "category": {"type": "text"}, "order": {"type": "number"}},
+      "question": "Which shared guidance applies to the selected roles?"},
+    "process": {"title": "Agent process", "role": "document", "root": false, "status": "none",
+      "parents": ["memory"], "field_max_length": 16384,
+      "fields": {"project": {"type": "list"}, "role": {"type": "list"}, "actor": {"type": "text"},
+        "trigger": {"type": "text"}, "ends_when": {"type": "text"},
+        "output": {"type": "enum", "values": ["signal", "json"]}, "signals": {"type": "list"}},
+      "question": "Which agent runs this process, and when does it end?"},
+    "rule": {"title": "Agent rule", "role": "document", "root": false, "status": "none",
+      "parents": ["memory"], "field_max_length": 16384,
+      "fields": {"project": {"type": "list"}, "role": {"type": "list"}, "module": {"type": "list"}, "severity": {"type": "text"}},
+      "question": "Which rule must the selected roles obey?"},
+    "lesson": {"title": "Agent lesson", "role": "document", "root": false, "status": "none",
+      "parents": ["memory"], "field_max_length": 16384,
+      "fields": {"project": {"type": "list"}, "role": {"type": "list"}, "module": {"type": "list"}},
+      "question": "Which verified lesson applies to the selected roles?"}
+  }
+}
+```
+
+Agents and hooks read this subtree through `POST /api/data` with the workspace read key
+(`jpr_...`). Without `query`, the route walks the filtered subtree and returns `guide`,
+`process` and `rule` items in tree order. With `query`, hybrid search ranks only the `lesson`
+nodes inside that filtered subtree. Writes still go through `/mcp` (`save_object`). See
+[read key](api.md#read-key) and [data reads](api.md#data-reads).
 
 ## Required document fields
 

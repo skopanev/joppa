@@ -76,6 +76,11 @@ test('guide-teaches-reports-ac1: the guide teaches test nodes and records, not l
     assert.match(text, /A criterion without a test node is orange/);
     assert.doesNotMatch(text, /full report|JUnit|pre-push/i);
     assert.match(text, /status rule: own, children, links or none/);
+    const dataReads = await f.page.locator('#data-reads').innerText();
+    assert.match(dataReads, /POST \/api\/data/);
+    assert.match(dataReads, /jpr_\.\.\./);
+    assert.match(text, /Role guide/);
+    assert.match(text, /Agent lesson/);
   } finally { await f.close(); }
 });
 
