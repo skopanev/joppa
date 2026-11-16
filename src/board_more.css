@@ -227,5 +227,6 @@ body:has(.layout.has-preview){max-width:1360px;padding-inline:clamp(28px,5vw,64p
 .preview-title{flex:1;min-width:0;margin:0;font-size:1.25em;color:var(--heading)}
 .preview-close{border:0;background:none;font-size:1.4em;line-height:1;color:var(--muted);cursor:pointer;transition:color .15s ease}
 .preview-close:hover{color:var(--heading);text-decoration:none}
+.layout.has-preview #tree:not(:has(>.object-page))>:is(.filter-fields,.link-filters){display:none}
 .layout.has-preview #tree:not(:has(>.object-page)) .common-object>.object-body>:not(.object-children,.object-details:not([hidden])){display:none}
 #tree .common-object.previewed>summary{background:color-mix(in srgb,var(--accent) 10%,transparent)}
