@@ -12,6 +12,7 @@ import {appendObjectChildren,appendObjectPage} from 'board/object-list.js';
 import {fillCommonObject} from 'board/object-detail.js';
 import {showObjectRevisions} from 'board/revisions.js';
 import {personLabel} from 'board/format.js';
+import {showPreview} from 'board/preview.js';
 export function commonObjectCard(item,loadedDetail,parentTitle){
   const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
@@ -52,6 +53,8 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   };
   // The loading line shows at once; the card opens before its two reads end.
   card.branchPrepare=async()=>{if(loaded)return;loaded=true;body.replaceChildren(E('p','Loading object…','object-loading hint'));try{await fill();}catch(e){loaded=false;body.replaceChildren();notify(e);throw e;}};
+  // A row that opens in the tree (not on a single-object page) shows its document in the preview pane.
+  card.addEventListener('toggle',()=>{if(card.open&&card.closest('#tree')&&!card.closest('.object-page'))showPreview(item.address);});
   card.addEventListener('toggle',async()=>{if(card.open)syncObjectTitles(body);if(!card.open||loaded)return;loaded=true;card.branchReady=true;body.append(E('p','Loading object…','object-loading hint'));try{const before=card.getBoundingClientRect().height;await fill();stopBranchAnimation(card);animateBranchHeight(card,before,card.getBoundingClientRect().height);}catch(e){loaded=false;body.replaceChildren();notify(e);}});
   return card;
 }

@@ -89,7 +89,10 @@ test('tests-only-from-reports-ac1: object pages and board rows show no legacy ch
     await Promise.all(f.requests.map(entry => entry.body));
     for (const address of addresses) await noLegacy(cards[address], address);
     await rowShown(cards['ac:A']);
-    await resultShown(cards[x]);
+    const previewCard = f.page.locator('#preview .preview-card[data-object-address="' + x + '"]');
+    await previewCard.waitFor();
+    await noLegacy(previewCard, x);
+    await resultShown(previewCard);
   } finally { await f.close(); }
 });
 

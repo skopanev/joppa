@@ -170,4 +170,29 @@ test('compact-open-object-ac7: the Properties icon opens a closed object with it
     }
   } finally { await f.close(); }
 });
+
+test('side-preview: an opened tree row shows its document on the right with margins, no Open page link, and Escape closes it', async () => {
+  const f = await fixture({'domain:X': {title: 'Subscriptions', body: 'Preview body text'}, 'capability:a': {title: 'Child A', parent: 'domain:X'}});
+  try {
+    await f.page.setViewportSize({width: 1440, height: 900});
+    await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
+    const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
+    const pane = f.page.locator('#preview');
+    await X.waitFor();
+    assert.equal(await pane.isVisible(), false);
+    await X.locator(':scope > summary').click({position: {x: 4, y: 4}});
+    await pane.locator('.preview-title').filter({hasText: 'Subscriptions'}).waitFor();
+    assert.equal(await pane.isVisible(), true);
+    assert.match(await pane.locator('.object-content').innerText(), /Preview body text/);
+    assert.equal(await pane.getByText('Open page').count(), 0);
+    const box = await pane.boundingBox();
+    assert.ok(box.x > 400 && box.x + box.width <= 1440 - 28, JSON.stringify(box));
+    await f.page.keyboard.press('Escape');
+    await f.page.waitForFunction(() => document.getElementById('preview').hidden === true);
+    // A single-object page keeps its inline body and never opens the side preview.
+    await f.open('domain:X');
+    assert.equal(await pane.isVisible(), false);
+    assert.equal(await f.page.locator('.object-page .object-content').isVisible(), true);
+  } finally { await f.close(); }
+});
 };

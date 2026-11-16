@@ -213,3 +213,19 @@ dialog::backdrop{background:#22222240}
 .flow-step:hover{border-color:var(--heading);color:var(--heading)}
 .flow-fact{display:flex;flex-basis:100%;align-items:baseline;gap:.4rem;min-width:0}
 .flow-fact-title{flex:1;min-width:0;overflow-wrap:anywhere}
+/* The preview pane sits beside the tree inside a centered frame with generous side margins.
+   Open rows in the tree show only their children, because the pane shows the document. */
+@media(prefers-reduced-motion:no-preference){
+  body{transition:max-width .28s cubic-bezier(.2,.75,.25,1),padding-inline .28s cubic-bezier(.2,.75,.25,1)}
+  #tree .common-object>summary{transition:background-color .18s ease}
+}
+body:has(.layout.has-preview){max-width:1360px;padding-inline:clamp(28px,5vw,64px)}
+.layout.has-preview{display:grid;grid-template-columns:minmax(0,4.4fr) minmax(0,5.6fr);gap:32px;align-items:start}
+#preview{position:sticky;top:20px;max-height:calc(100vh - 40px);overflow:auto;border-left:1px solid var(--line);padding:2px 12px 28px 28px;will-change:transform,opacity}
+#preview.is-switching>.preview-card{opacity:.55;transition:opacity .12s ease}
+.preview-head{display:flex;align-items:baseline;gap:.6em;flex-wrap:wrap;margin-bottom:.6em}
+.preview-title{flex:1;min-width:0;margin:0;font-size:1.25em;color:var(--heading)}
+.preview-close{border:0;background:none;font-size:1.4em;line-height:1;color:var(--muted);cursor:pointer;transition:color .15s ease}
+.preview-close:hover{color:var(--heading);text-decoration:none}
+.layout.has-preview #tree:not(:has(>.object-page)) .common-object>.object-body>:not(.object-children,.object-details:not([hidden])){display:none}
+#tree .common-object.previewed>summary{background:color-mix(in srgb,var(--accent) 10%,transparent)}

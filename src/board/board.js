@@ -12,6 +12,7 @@ import {forgetRelations} from 'board/relations.js';
 import {renderObjectPage} from 'board/object-page.js';
 import {commonObjectFilters,LINK_FILTERS} from 'board/filters.js';
 import {commonNotes} from 'board/notes.js';
+import {hidePreview} from 'board/preview.js';
 export async function load() {
   closeAccountMenu();forgetRelations();
   const request = ++state.loadNumber;
@@ -48,7 +49,7 @@ function applyStatuses(statuses){
   }
 }
 async function renderObjectTree(){
-  const root=$('tree');closeFlowPage();root.replaceChildren();
+  const root=$('tree');closeFlowPage();hidePreview();root.replaceChildren();
   const generation=state.loadNumber;
   if(!state.data.objectTypes||!Object.keys(state.data.objectTypes).length){
     const configuration=await api('workspaces/'+encodeURIComponent(state.ws)+'/tree');if(generation!==state.loadNumber)return;
