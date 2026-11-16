@@ -12,9 +12,9 @@ import {appendObjectChildren,appendObjectPage} from 'board/object-list.js';
 import {fillCommonObject} from 'board/object-detail.js';
 import {showObjectRevisions} from 'board/revisions.js';
 import {personLabel} from 'board/format.js';
-import {showPreview} from 'board/preview.js';
+import {previewActive,showPreview} from 'board/preview.js';
 export function commonObjectCard(item,loadedDetail,parentTitle){
-  const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
+  const card=E('details',undefined,'common-object');card.dataset.objectAddress=item.address;card.dataset.copyId=item.item_id||item.address;card.dataset.kind=item.kind;card.dataset.objectTitle=item.title;applyObjectColor(card,item.kind);
   const summary=E('summary',undefined,'title-row');
   const signal=item.historical?{tone:'blue',label:'Saved revision',at:item.at}:item.present===false?{tone:'blue',label:'Historical object',at:item.at}:item.signal?.tone?item.signal:{tone:'blue',label:'Current document',at:item.at};
   const repeatsParent=item.title===parentTitle;
@@ -41,6 +41,13 @@ export function commonObjectCard(item,loadedDetail,parentTitle){
   fieldsToggle.type='button';fieldsToggle.title='Properties';fieldsToggle.setAttribute('aria-label','Properties');fieldsToggle.append(propertiesIcon());
   fieldsToggle.setAttribute('aria-expanded','false');fieldsToggle.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();});
   actions.append(fieldsToggle,copy,history);summary.append(actions);card.append(summary);
+  // Clicking an already-open ancestor while another row is previewed focuses that ancestor without collapsing its branch.
+  summary.addEventListener('click',e=>{
+    if(e.defaultPrevented||e.target.closest('button,a,input,label,select,textarea'))return;
+    if(previewActive()&&card.open&&!card.classList.contains('branch-closing')&&!card.classList.contains('previewed')&&card.closest('#tree')&&!card.closest('.object-page')){
+      e.preventDefault();showPreview(item.address);
+    }
+  });
   const body=E('div',undefined,'object-body');card.append(body);enableBranchMotion(card);let loaded=false;
   // Fill the body with the document and its children. Both requests run at once.
   const fill=async()=>{

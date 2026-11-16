@@ -122,7 +122,7 @@ test('no-dashed-focus-ac2: keyboard focus draws no outline frame on the board an
   const themes = {light: {background: 'rgb(255, 252, 245)', link: 'rgb(0, 92, 239)'}, dark: {background: 'rgb(25, 28, 32)', link: 'rgb(140, 181, 255)'}};
   const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
   const pages = {
-    board: {path: '/?workspace=', mouse: X.locator(':scope > summary .copy'), ready: async () => {
+    board: {path: '/?workspace=', mouse: f.page.locator('#preview .preview-actions .copy'), ready: async () => {
       await X.waitFor();
       if (await X.getAttribute('open') === null) await X.locator(':scope > summary').click({position: {x: 4, y: 4}});
       await X.locator(':scope > .object-body > .object-children > .common-object[data-object-address="capability:Y"]').waitFor();

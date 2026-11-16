@@ -159,6 +159,11 @@ test('compact-open-object-ac7: the Properties icon opens a closed object with it
       if (await X.getAttribute('open') !== null) await row.click({position: {x: 4, y: 4}});
       await closed();
       await control.click();
+      if (!viewport) {
+        await f.page.waitForFunction(() => !document.getElementById('preview').hidden);
+        await f.page.keyboard.press('Escape');
+        await f.page.waitForFunction(() => document.getElementById('preview').hidden === true);
+      }
       await shownFirst();
       // A loaded object with hidden properties: close it, then the icon opens it with them shown.
       await control.click();
@@ -166,6 +171,11 @@ test('compact-open-object-ac7: the Properties icon opens a closed object with it
       await row.click({position: {x: 4, y: 4}});
       await closed();
       await control.click();
+      if (!viewport) {
+        await f.page.waitForFunction(() => !document.getElementById('preview').hidden);
+        await f.page.keyboard.press('Escape');
+        await f.page.waitForFunction(() => document.getElementById('preview').hidden === true);
+      }
       await shownFirst();
     }
   } finally { await f.close(); }
@@ -177,22 +187,38 @@ test('side-preview: an opened tree row shows its document on the right with marg
     await f.page.setViewportSize({width: 1440, height: 900});
     await f.page.goto(f.live.root + '/?workspace=' + f.live.ws);
     const X = f.page.locator('#tree .common-object[data-object-address="domain:X"]');
+    const child = X.locator(':scope > .object-body > .object-children > .common-object[data-object-address="capability:a"]');
     const filters = f.page.locator('#tree > .filter-fields');
     const pane = f.page.locator('#preview');
     await X.waitFor();
     assert.equal(await pane.isVisible(), false);
     assert.equal(await filters.isVisible(), true);
+    assert.equal(await X.locator(':scope > summary > .item-actions').isVisible(), true);
     await X.locator(':scope > summary').click({position: {x: 4, y: 4}});
     await pane.locator('.preview-title').filter({hasText: 'Subscriptions'}).waitFor();
+    await child.waitFor();
     assert.equal(await pane.isVisible(), true);
     assert.equal(await filters.isVisible(), false);
+    assert.equal(await X.locator(':scope > summary > .item-actions').isVisible(), false);
+    assert.equal(await X.locator(':scope > summary > .verification-chip').isVisible(), false);
+    assert.equal(await pane.locator('.preview-actions .copy').isVisible(), true);
+    assert.equal(await pane.locator('.preview-actions .history-button').isVisible(), true);
+    assert.match(await pane.locator('.object-meta').innerText(), /1 CAP/);
     assert.match(await pane.locator('.object-content').innerText(), /Preview body text/);
     assert.equal(await pane.getByText('Open page').count(), 0);
+    // Clicking a child previews the child, and clicking the open parent focuses the parent without collapsing it.
+    await child.locator(':scope > summary').click({position: {x: 4, y: 4}});
+    await pane.locator('.preview-title').filter({hasText: 'Child A'}).waitFor();
+    await X.locator(':scope > summary').click({position: {x: 4, y: 4}});
+    await pane.locator('.preview-title').filter({hasText: 'Subscriptions'}).waitFor();
+    assert.equal(await X.getAttribute('open'), '');
+    assert.equal(await child.isVisible(), true);
     const box = await pane.boundingBox();
     assert.ok(box.x > 400 && box.x + box.width <= 1440 - 28, JSON.stringify(box));
     await f.page.keyboard.press('Escape');
     await f.page.waitForFunction(() => document.getElementById('preview').hidden === true);
     assert.equal(await filters.isVisible(), true);
+    assert.equal(await X.locator(':scope > summary > .item-actions').isVisible(), true);
     // A single-object page keeps its inline body and never opens the side preview.
     await f.open('domain:X');
     assert.equal(await pane.isVisible(), false);

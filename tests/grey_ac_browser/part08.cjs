@@ -33,6 +33,10 @@ test('compact-open-object-ac1: the object row holds the control for its fields',
       await row.waitFor();
       if (await X.getAttribute('open') === null) await row.click({position: {x: 4, y: 4}});
       await children.nth(1).waitFor();
+      if (!viewport) {
+        await f.page.keyboard.press('Escape');
+        await f.page.waitForFunction(() => document.getElementById('preview').hidden === true);
+      }
       assert.equal(await X.getAttribute('open'), '');
       assert.equal(await control.count(), 1);
       assert.equal(await control.evaluate(node => node.tagName + ' ' + node.type), 'BUTTON button');

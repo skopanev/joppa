@@ -224,9 +224,15 @@ body:has(.layout.has-preview){max-width:1360px;padding-inline:clamp(28px,5vw,64p
 #preview{position:sticky;top:20px;max-height:calc(100vh - 40px);overflow:auto;border-left:1px solid var(--line);padding:2px 12px 28px 28px;will-change:transform,opacity}
 #preview.is-switching>.preview-card{opacity:.55;transition:opacity .12s ease}
 .preview-head{display:flex;align-items:baseline;gap:.6em;flex-wrap:wrap;margin-bottom:.6em}
+.preview-head>.status-circle{margin-right:0}
 .preview-title{flex:1;min-width:0;margin:0;font-size:1.25em;color:var(--heading)}
+.preview-actions{margin-left:auto;align-items:center}
 .preview-close{border:0;background:none;font-size:1.4em;line-height:1;color:var(--muted);cursor:pointer;transition:color .15s ease}
 .preview-close:hover{color:var(--heading);text-decoration:none}
+#preview .object-meta>.verification-chip{font-variant-numeric:tabular-nums}
+#preview .object-meta>.verification-chip.has-passes{color:var(--pass)}
 .layout.has-preview #tree:not(:has(>.object-page))>:is(.filter-fields,.link-filters){display:none}
+.layout.has-preview #tree:not(:has(>.object-page)) .common-object>summary{padding:.52em .4rem .52em .6rem}
+.layout.has-preview #tree:not(:has(>.object-page)) .common-object>summary>:is(.item-actions,.verification-chip,.assignee-chip){display:none}
 .layout.has-preview #tree:not(:has(>.object-page)) .common-object>.object-body>:not(.object-children,.object-details:not([hidden])){display:none}
 #tree .common-object.previewed>summary{background:color-mix(in srgb,var(--accent) 10%,transparent)}
