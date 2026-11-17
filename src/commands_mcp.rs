@@ -13,6 +13,7 @@ pub const MCP_HIDDEN: &[&str] = &[
     "redact_object",
     "member",
     "remove_member",
+    "set_role",
     "update_workspace",
     "delete_workspace",
 ];

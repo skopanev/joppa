@@ -1,19 +1,22 @@
 //! Part of `store_access`: `granted_workspaces` and the items after it, moved from store_access.rs unchanged.
 use super::*;
 
-/// The workspaces that members granted to this email or to this Google hd.
+/// The workspaces that members granted to this email or to this Google hd, each with its role.
+/// An email grant gives its role and a domain grant gives viewer. human wins.
 pub async fn granted_workspaces(
     pool: &Pool,
     email: &str,
     hd: Option<&str>,
-) -> Result<BTreeSet<String>> {
+) -> Result<BTreeMap<String, String>> {
     let conn = pool.get().await?;
-    Ok(conn
+    let mut roles = BTreeMap::new();
+    for row in conn
         .query(GRANTED, &[&email.to_ascii_lowercase(), &hd])
         .await?
-        .iter()
-        .map(|row| row.get(0))
-        .collect())
+    {
+        add_role(&mut roles, row.get(0), row.get(1));
+    }
+    Ok(roles)
 }
 
 /// A browser session joins each workspace granted to its email since sign-in: the bound
@@ -45,11 +48,12 @@ pub async fn enroll_granted(
         .map(|row| row.get(0))
         .collect();
     drop(conn);
-    let missing: BTreeSet<String> = granted_workspaces(pool, &email.to_ascii_lowercase(), hd)
-        .await?
-        .difference(&joined)
-        .cloned()
-        .collect();
+    let missing: BTreeMap<String, String> =
+        granted_workspaces(pool, &email.to_ascii_lowercase(), hd)
+            .await?
+            .into_iter()
+            .filter(|(workspace, _)| !joined.contains(workspace))
+            .collect();
     if missing.is_empty() {
         return Ok(());
     }
@@ -62,8 +66,23 @@ pub async fn enroll_granted(
     Ok(())
 }
 
-/// A human member grants a workspace to an email. A refused request stores nothing.
+/// A human member grants a workspace to an email as Read-only. A refused request stores nothing.
 pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str) -> Result<Value> {
+    grant_email_role(pool, workspace, actor, email, commands::VIEWER).await
+}
+
+/// A human member grants a workspace to an email with the role viewer or human. A repeated
+/// grant can raise the role to human and never lowers it. A refused request stores nothing.
+pub async fn grant_email_role(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    email: &str,
+    role: &str,
+) -> Result<Value> {
+    if ![commands::VIEWER, "human"].contains(&role) {
+        return Err(commands::ClientField("role is viewer or human").into());
+    }
     let email = email.trim().to_ascii_lowercase();
     if email.len() > 254
         || !email.split_once('@').is_some_and(|(local, domain)| {
@@ -76,8 +95,8 @@ pub async fn grant_email(pool: &Pool, workspace: &str, actor: &str, email: &str)
     let (workspace, _) = human_member_of(pool, workspace, actor).await?;
     let conn = pool.get().await?;
     conn.execute(
-        "INSERT INTO joppa.email_grants(workspace,email,created_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",
-        &[&workspace, &email, &actor],
+        "INSERT INTO joppa.email_grants(workspace,email,created_by,role) VALUES($1,$2,$3,$4) ON CONFLICT (workspace,email) DO UPDATE SET role='human' WHERE excluded.role='human'",
+        &[&workspace, &email, &actor, &role],
     )
     .await?;
     Ok(json!({"workspace": workspace, "email": email}))

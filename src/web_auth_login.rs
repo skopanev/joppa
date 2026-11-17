@@ -167,21 +167,26 @@ impl Login {
             Default::default()
         };
         let actor = self.admit(identity, !granted.is_empty())?;
-        let mut workspaces = match &self.rules {
-            Some(path) => {
-                joppa::access::Rules::read(path)?.resolve(&identity.email, identity.hd.as_deref())
-            }
+        // A rules file admits as human. A grant gives its role, and human wins over viewer.
+        let mut roles: std::collections::BTreeMap<String, String> = match &self.rules {
+            Some(path) => joppa::access::Rules::read(path)?
+                .resolve(&identity.email, identity.hd.as_deref())
+                .into_iter()
+                .map(|workspace| (workspace, "human".to_owned()))
+                .collect(),
             None => Default::default(),
         };
-        workspaces.extend(granted);
-        if self.rules.is_some() || !workspaces.is_empty() {
-            joppa::store::enroll(
+        for (workspace, role) in granted {
+            roles.entry(workspace).or_insert(role);
+        }
+        if self.rules.is_some() || !roles.is_empty() {
+            joppa::store::enroll_roles(
                 pool,
                 &actor,
                 &identity.sub,
                 &email,
                 identity.hd.as_deref(),
-                &workspaces,
+                &roles,
             )
             .await?;
         }

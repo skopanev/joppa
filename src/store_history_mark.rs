@@ -96,6 +96,7 @@ pub async fn mark_history(
     let tx = conn.transaction().await?;
     let id = resolve_workspace(&*tx, workspace).await?;
     access::check(&*tx, &id, actor, false).await?;
+    access::refuse_viewer(&*tx, &id, actor).await?;
     // A public item ID names its node by its address, also next to that address.
     mark.nodes = super::super::public_ids::node_addresses(&*tx, &id, &mark.nodes).await?;
     once(&mark.nodes)?;

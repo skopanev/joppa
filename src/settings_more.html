@@ -16,36 +16,51 @@ theme.onclick=()=>{
 };
 systemTheme.addEventListener('change',updateTheme);
 updateTheme();
-// Every member sees the same controls. Only the signed-in person (/api/me) has no Remove on the own row.
+// Every Editor sees the same controls. Only the signed-in person (/api/me) has no Remove on the
+// own row. A Read-only member sees only Hide from my list and + New workspace: /api/access lists
+// only the workspaces where the person is an Editor.
 let workspaces=[],access=[],me=null;
+const ROLES=[['viewer','Read-only'],['human','Editor']];
 const select=$('workspace-select'),panel=$('workspace-panel');
 const show=()=>{
-  const id=select.value,entry=access.find(w=>w.id===id);
+  const id=select.value,entry=access.find(w=>w.id===id),editor=Boolean(entry);
   // Back to board opens the selected workspace.
   $('back-link').href=id?'/?workspace='+encodeURIComponent(id):'/';
   panel.hidden=!id;
   // One list: members first, then emails that have not signed in yet, then whole domains.
   // Each row but the row of the signed-in person has Remove.
-  const item=(kind,text,removal)=>{
+  const item=(kind,text,removal,role)=>{
     const li=document.createElement('li');li.dataset.kind=kind;li.append(element('span',text));
+    if(role)li.append(role);
     if(removal){
       const button=element('button','Remove');button.type='button';button.className='remove';
       button.setAttribute('aria-label','Remove '+text);button.onclick=()=>remove(removal,button);li.append(button);
     }
     return li;
   };
-  // Without an answer of /api/me no member row has Remove.
-  $('workspace-people').replaceChildren(...(entry?.members||[]).map(m=>item('member',m.label,!me||m.id===me.actor?null:{member:m.id})),
-    ...(entry?.emails||[]).map(e=>item('email',e+' (invited)',{email:e})),...(entry?.domains||[]).map(d=>item('domain','Everyone at '+d,{domain:d})));
+  // The Role control of a member or an invited email changes the role at once.
+  const roleControl=(text,role,target)=>{
+    const choice=document.createElement('select');choice.className='role';choice.setAttribute('aria-label','Role of '+text);
+    for(const [value,label] of ROLES)choice.append(new Option(label,value));
+    choice.value=role;choice.onchange=()=>changeRole(target,choice);
+    return choice;
+  };
+  // Without an answer of /api/me no member row has Remove. A domain admits Read-only only.
+  $('workspace-people').replaceChildren(...(entry?.members||[]).map(m=>item('member',m.label,!me||m.id===me.actor?null:{member:m.id},roleControl(m.label,m.role,{member:m.id}))),
+    ...(entry?.email_grants||[]).map(e=>item('email',e.email+' (invited)',{email:e.email},roleControl(e.email,e.role,{email:e.email}))),
+    ...(entry?.domains||[]).map(d=>item('domain','Everyone at '+d,{domain:d},Object.assign(element('span','Read-only'),{className:'role-text'}))));
+  $('read-key-panel').hidden=$('people-panel').hidden=!editor;
   $('rename-title').value=entry?.title||selectedTitle();
   // The pencil renames the selected workspace for every member.
-  $('rename-open').hidden=!id;if(!id)$('rename-workspace').hidden=true;
+  $('rename-open').hidden=!id||!editor;if(!id||!editor)$('rename-workspace').hidden=true;
   // The checkbox shows the flag of the signed-in member for the selected workspace.
   $('hide-workspace').checked=workspaces.some(w=>w.id===id&&w.hidden===true);
   for(const id of ['hide-error','grant-error','rename-error','delete-error'])$(id).textContent='';
   closeDelete();
-  // Only a switch of the workspace reads the read key again, and it clears a shown key.
-  if(id!==keyWorkspace){keyWorkspace=id;loadKey();}
+  // Only a switch of the workspace reads the read key again, and it clears a shown key. A
+  // Read-only member reads no read key.
+  const keyId=editor?id:null;
+  if(keyId!==keyWorkspace){keyWorkspace=keyId;if(keyId)loadKey();else{++keyView;showKey(null);}}
 };
 // The read key of the selected workspace. A new key shows once. A switch or a revoke clears it.
 let keyWorkspace=null,keyView=0;
@@ -152,6 +167,12 @@ const remove=async(removal,button)=>{
     await load(workspace);
   }catch(e){$('grant-error').textContent=e.message;busy(button,false);}
 };
+// A role change reads the lists again. A refused change shows the error and the stored role.
+const changeRole=async(target,choice)=>{
+  const workspace=select.value;choice.disabled=true;$('grant-error').textContent='';
+  const failure=await send('/api/access/role','POST',{workspace,...target,role:choice.value},'Could not change the role.').then(()=>'',e=>e.message);
+  await load(workspace).catch(()=>{});$('grant-error').textContent=failure;
+};
 // The header shows no name of the signed-in person, only Sign out.
 $('logout').onclick=async()=>{busy($('logout'),true);await fetch('/auth/logout',{method:'POST'});location.assign('/');};
 load(sessionStorage.getItem('joppa-workspace')).catch(e=>{$('workspace-error').textContent=e.message;});
@@ -163,7 +184,7 @@ $('grant-access').onsubmit=async event=>{
   busy(button,true);$('grant-error').textContent='';
   const value=input.value.trim(),email=value.includes('@');
   try{
-    await send(email?'/api/email-grants':'/api/domain-grants','POST',email?{workspace,email:value}:{workspace,domain:value},
+    await send(email?'/api/email-grants':'/api/domain-grants','POST',email?{workspace,email:value,role:$('grant-role').value}:{workspace,domain:value},
       email?'Could not add the person.':'Could not add the domain.');
     input.value='';
     await load(workspace);

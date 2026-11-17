@@ -12,7 +12,12 @@ pub(super) fn apply_first(
     recorded_at: &str,
 ) -> Result<bool> {
     identifier(actor)?;
-    if let Command::EnrollMember { id } = command {
+    let enrolled = match command {
+        Command::EnrollMember { id } => Some((id, "human")),
+        Command::EnrollViewer { id } => Some((id, VIEWER)),
+        _ => None,
+    };
+    if let Some((id, role)) = enrolled {
         ensure!(
             actor == "joppa-access" && !w.admin.is_empty() && w.deleted_at.is_none(),
             "internal enrollment required"
@@ -22,7 +27,7 @@ pub(super) fn apply_first(
             id != "joppa-access" && !w.members.contains_key(id),
             "invalid enrollment identity"
         );
-        w.members.insert(id.clone(), "human".into());
+        w.members.insert(id.clone(), role.into());
         return Ok(true);
     }
     // The internal actor of a deletion is no member; the removal checks the actor itself.

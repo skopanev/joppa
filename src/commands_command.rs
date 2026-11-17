@@ -87,6 +87,12 @@ pub enum Command {
         id: String,
         reason: String,
     },
+    /// A human member sets the role of a member: viewer (Read-only) or human (Editor). The
+    /// last human member stays human.
+    SetRole {
+        id: String,
+        role: String,
+    },
     /// A human member deletes the workspace. The write then removes every row of it from the database.
     DeleteWorkspace {
         reason: String,
@@ -111,6 +117,11 @@ pub enum Command {
     },
     /// Internal enrollment event; public command entry points reject this operation.
     EnrollMember {
+        id: String,
+    },
+    /// Internal enrollment of a Read-only member (viewer) from a grant. Public command entry
+    /// points reject this operation.
+    EnrollViewer {
         id: String,
     },
     /// Internal enrollment of a service identity, an agent or a runner, by the server for the

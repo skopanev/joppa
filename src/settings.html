@@ -31,7 +31,10 @@ try{
 #workspace-people li:first-child{border-top:1px solid var(--rule)}
 /* A people row: the name or address, and Remove at the end of the row. */
 #workspace-people li{display:flex;align-items:center;gap:.6rem;justify-content:space-between}
-#workspace-people li>span{min-width:0;overflow-wrap:anywhere}
+#workspace-people li>span{flex:1;min-width:0;overflow-wrap:anywhere}
+/* The role of a person: Read-only or Editor. A domain row names Read-only as text. */
+#workspace-people li .role,#grant-role{flex:none;width:auto}
+#workspace-people li .role-text{flex:none;color:var(--muted)}
 #workspace-people li .remove{color:var(--muted);flex:none}
 #workspace-people li .remove:hover{color:var(--fail)}
 #workspace-people li[data-kind=email],#workspace-people li[data-kind=domain]{color:var(--muted)}
@@ -109,7 +112,7 @@ try{
       <ul id="workspace-people" aria-label="People with access"></ul>
       <form id="grant-access">
         <label for="grant-address">Email or domain</label>
-        <div class="row"><input id="grant-address" name="address" autocomplete="off" placeholder="maria@example.com or example.com"><button id="grant-button" type="submit">Add</button></div>
+        <div class="row"><input id="grant-address" name="address" autocomplete="off" placeholder="maria@example.com or example.com"><select id="grant-role" name="role" aria-label="Role"><option value="viewer" selected>Read-only</option><option value="human">Editor</option></select><button id="grant-button" type="submit">Add</button></div>
         <p id="grant-error" role="alert"></p>
       </form>
       <div id="delete-workspace" class="danger">

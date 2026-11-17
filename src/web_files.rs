@@ -14,7 +14,7 @@ pub(super) async fn upload(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> ApiResult {
-    require_write_credential(&headers)?;
+    require_write(&app, &headers, &workspace).await?;
     let actor = authenticate(&app, &headers).await?;
     // Право проверяется ДО записи файла: иначе чужой смог бы наполнять
     // хранилище, ничего не имея в воркспейсе.

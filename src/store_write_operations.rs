@@ -47,6 +47,15 @@ pub(crate) async fn write(
         return Ok(reply);
     }
     let (mut state, base_position) = super::state_cache::take(&*tx, &workspace).await?;
+    // A Read-only member only hides the workspace from the own list.
+    if state
+        .members
+        .get(actor)
+        .is_some_and(|r| r == commands::VIEWER)
+        && !operations.iter().all(|o| hides_only(&o.command))
+    {
+        return Err(access::ReadOnly.into());
+    }
     let mut previous = state.clone();
     let mut events = Vec::new();
     let mut refs = BTreeMap::new();
@@ -89,7 +98,7 @@ pub(crate) async fn write(
                 allow_workspace_create || !matches!(command, Command::EnrollService { .. }),
                 "internal operation"
             );
-            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport(crate::commands::RecordReportOp { .. }) | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {} | Command::MigrateNoteParents {} | Command::MigrateBody {} | Command::MigratePurpose {} | Command::MigrateTestNodes {} | Command::MigrateGenericNodes {} | Command::MigrateDecisionRequired {}), "internal operation");
+            ensure!(!matches!(command, Command::EnrollMember { .. } | Command::EnrollViewer { .. } | Command::RemoveWorkspaceReferences { .. } | Command::RecordReport(crate::commands::RecordReportOp { .. }) | Command::MigrateNotes {} | Command::MigrateTasks {} | Command::MigrateSchema {} | Command::MigrateDocuments {} | Command::MigrateTaskClaims {} | Command::MigratePersistentClaims {} | Command::MigrateConsumers {} | Command::MigrateConsumerDrops {} | Command::MigrateTestRules {} | Command::MigrateNoteParents {} | Command::MigrateBody {} | Command::MigratePurpose {} | Command::MigrateTestNodes {} | Command::MigrateGenericNodes {} | Command::MigrateDecisionRequired {}), "internal operation");
             ensure!(
                 allow_workspace_create || !matches!(command, Command::Workspace { .. }),
                 "workspace creation is available only through the server CLI"
@@ -180,6 +189,10 @@ pub(crate) async fn write(
         if let Command::RemoveMember { id, .. } = &event.command {
             tx.execute("DELETE FROM joppa.email_grants g USING joppa.google_identities i WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)", &[&workspace, id]).await?;
         }
+        // A new role of a member is also the role of the email grant of its Google account.
+        if let Command::SetRole { id, role } = &event.command {
+            tx.execute("UPDATE joppa.email_grants g SET role=$3 FROM joppa.google_identities i WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)", &[&workspace, id, role]).await?;
+        }
     }
     // A deleted workspace leaves the database with every row of it, this request included.
     let purged = events
@@ -207,4 +220,14 @@ pub(crate) async fn write(
     }
     super::search_indexer::wake();
     Ok(result)
+}
+
+/// A command that only sets the hidden flag of the sender: update_workspace with hidden.
+fn hides_only(command: &Value) -> bool {
+    command["op"] == "update_workspace"
+        && command.get("hidden").is_some_and(Value::is_boolean)
+        && command.as_object().is_some_and(|m| {
+            m.iter()
+                .all(|(k, v)| k == "op" || k == "hidden" || v.is_null())
+        })
 }

@@ -7,7 +7,7 @@ pub(super) async fn command(
     headers: HeaderMap,
     Json(request): Json<Value>,
 ) -> ApiResult {
-    require_write_credential(&headers)?;
+    require_write(&app, &headers, &workspace).await?;
     let actor = authenticate(&app, &headers).await?;
     if let Err(error) = joppa::commands::reject_actor_field(&request)
         .and_then(|()| joppa::commands::reject_actor_field(&request["command"]))
@@ -31,8 +31,18 @@ pub(super) async fn command(
         .await,
     )
 }
-/// The board is read-only; dependency changes go through Joppa MCP.
-pub(super) async fn dependency() -> ApiResult {
+/// The board is read-only, and dependency changes go through Joppa MCP. A Read-only member gets
+/// the Read-only refusal.
+pub(super) async fn dependency(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    if let Ok(actor) = authenticate(&app, &headers).await {
+        store::check_writer(&app.pool, &workspace, &actor)
+            .await
+            .map_err(failure)?;
+    }
     Err((
         StatusCode::FORBIDDEN,
         Json(json!({"error":"The portal is read-only. Use Joppa MCP to make changes."})),
@@ -53,7 +63,7 @@ pub(super) async fn reorder(
     headers: HeaderMap,
     Json(request): Json<OrderRequest>,
 ) -> ApiResult {
-    require_write_credential(&headers)?;
+    require_write(&app, &headers, &workspace).await?;
     let actor = authenticate(&app, &headers).await?;
     // Legacy integration endpoint; browser sessions cannot reorder the tree.
     web_auth::check_origin(&headers).map_err(auth_error)?;

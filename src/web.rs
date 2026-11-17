@@ -106,6 +106,8 @@ fn failure(e: anyhow::Error) -> (StatusCode, Json<Value>) {
     (
         if e.is::<store::AccessDenied>() {
             StatusCode::NOT_FOUND
+        } else if e.is::<store::ReadOnly>() {
+            StatusCode::FORBIDDEN
         } else if e.is::<joppa::commands::ClientField>() || e.is::<joppa::objects::RequiredField>()
         {
             StatusCode::UNPROCESSABLE_ENTITY
@@ -114,6 +116,19 @@ fn failure(e: anyhow::Error) -> (StatusCode, Json<Value>) {
         },
         Json(json!({"error":format!("{e:#}")})),
     )
+}
+/// A write route refuses a Read-only member first, then a browser session.
+async fn require_write(
+    app: &App,
+    headers: &HeaderMap,
+    workspace: &str,
+) -> std::result::Result<(), (StatusCode, Json<Value>)> {
+    if let Ok(actor) = authenticate(app, headers).await {
+        store::check_writer(&app.pool, workspace, &actor)
+            .await
+            .map_err(failure)?;
+    }
+    require_write_credential(headers)
 }
 /// Browser sessions can read product data; writes require service credentials.
 fn require_write_credential(
@@ -137,6 +152,9 @@ use uploads::*;
 #[path = "web_workspaces.rs"]
 mod workspaces;
 use workspaces::*;
+#[path = "web_roles.rs"]
+mod roles;
+use roles::*;
 #[path = "web_reads.rs"]
 mod reads;
 use reads::*;

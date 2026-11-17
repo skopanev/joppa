@@ -10,6 +10,9 @@ pub(crate) async fn check(pool: &Pool, call: &Upload) -> Result<()> {
     joppa::manual_checks::check_fields(result, until)?;
     // The direct read of the attachments checks the access and names the type of the target.
     let item = store::object_files(pool, &call.workspace, &call.actor, &call.target).await?;
+    // A Read-only member gets no upload link and stores no file.
+    let folder = item["folder"].as_str().unwrap_or_default();
+    store::check_writer(pool, folder, &call.actor).await?;
     if result.is_some() {
         let types = store::tree_schema(pool, &call.workspace, &call.actor, None).await?;
         let kind = item["kind"].as_str().unwrap_or_default();

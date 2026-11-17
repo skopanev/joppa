@@ -172,6 +172,7 @@ pub(crate) fn apply_inner(
             ensure!(w.members.remove(id).is_some(), "unknown member");
             w.hidden_by.remove(id);
         }
+        Command::SetRole { id, role } => apply_set_role(w, actor, id, role)?,
         Command::Consumer(crate::commands::ConsumerOp { .. }) => apply_consumer(w, command)?,
         Command::EditConsumer(crate::commands::EditConsumerOp { .. }) => {
             apply_edit_consumer(w, actor, command)?

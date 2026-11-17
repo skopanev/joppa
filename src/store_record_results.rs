@@ -96,6 +96,7 @@ pub async fn record_results(
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
     access::check(&*tx, &workspace, actor, false).await?;
+    access::refuse_viewer(&*tx, &workspace, actor).await?;
     super::writer::resolved(name, &workspace);
     tx.execute(
         "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",

@@ -17,10 +17,10 @@ pub const MEMBERSHIP: &str =
 /// The workspaces where the actor ($1) is a human member: they list in Settings with their
 /// people and grants.
 pub(crate) const HUMAN_MEMBERSHIP: &str = "SELECT workspace FROM joppa.state_entries WHERE section='members' AND key=$1 AND value #>> '{}' = 'human'";
-/// Member grants for a lowercase email ($1) and a Google hd ($2): its email grants, and the
-/// domain grants that equal the hd. Without hd, no domain grant matches.
-pub(crate) const GRANTED: &str = "SELECT workspace FROM joppa.email_grants WHERE email=$1
-     UNION SELECT workspace FROM joppa.domain_grants WHERE domain=lower($2::text)";
+/// Member grants for a lowercase email ($1) and a Google hd ($2), each with its role: its email
+/// grants, and the domain grants that equal the hd as viewer. Without hd, no domain grant matches.
+pub(crate) const GRANTED: &str = "SELECT workspace, role FROM joppa.email_grants WHERE email=$1
+     UNION ALL SELECT workspace, 'viewer' FROM joppa.domain_grants WHERE domain=lower($2::text)";
 /// The workspaces that the actor ($1) created. The creator has no grant, so this keeps its
 /// access path. It gives no right: membership still decides, so a removed creator loses access.
 pub(crate) const CREATED: &str = "SELECT workspace FROM joppa.state_entries WHERE section='meta' AND key='' AND value->>'admin'=$1 AND value->'deleted_at' IS NULL";
@@ -102,8 +102,8 @@ pub async fn check(
     }
 }
 
-/// Called only after verifying Google and resolving the private access policy.
-/// Enrollment leaves an explicit system event, never a forged member action.
+/// Called only after verifying Google and resolving the private access policy. Each workspace
+/// enrolls the person as a human member (store_access_roles.rs gives other roles).
 pub async fn enroll(
     pool: &Pool,
     actor: &str,
@@ -112,86 +112,11 @@ pub async fn enroll(
     hosted_domain: Option<&str>,
     workspaces: &BTreeSet<String>,
 ) -> Result<()> {
-    commands::identifier(actor)?;
-    ensure!(
-        actor != "joppa-access" && !workspaces.is_empty(),
-        "No workspace access"
-    );
-    let mut conn = pool.get().await?;
-    let tx = conn.transaction().await?;
-    tx.execute("INSERT INTO joppa.google_identities(actor,google_sub,email,hosted_domain) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", &[&actor,&google_sub,&email,&hosted_domain]).await?;
-    let identity = tx
-        .query_opt(
-            "SELECT google_sub,email FROM joppa.google_identities WHERE actor=$1",
-            &[&actor],
-        )
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Identity already belongs to another account"))?;
-    ensure!(
-        identity.get::<_, String>(0) == google_sub && identity.get::<_, String>(1) == email,
-        "Identity already belongs to another account"
-    );
-    // A first sign-in without hd leaves NULL. A later verified hd fills it for read scope.
-    tx.execute(
-        "UPDATE joppa.google_identities SET hosted_domain=$2 WHERE actor=$1 AND hosted_domain IS NULL AND $2::text IS NOT NULL",
-        &[&actor, &hosted_domain],
-    )
-    .await?;
-    join(&*tx, actor, workspaces).await?;
-    tx.commit().await?;
-    Ok(())
-}
-
-/// Add the actor to these workspaces as human, each with the enrollment event. The caller
-/// commits, so a failure leaves no partial membership.
-pub(crate) async fn join(
-    tx: &impl GenericClient,
-    actor: &str,
-    workspaces: &BTreeSet<String>,
-) -> Result<()> {
-    let mut normalized = BTreeSet::new();
-    for name in workspaces {
-        normalized.insert(resolve_workspace(tx, name).await?);
-    }
-    // BTreeSet order prevents opposite lock ordering on concurrent enrollment.
-    for workspace in &normalized {
-        tx.execute(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
-            &[workspace],
-        )
-        .await?;
-        let (mut state, base_position) = state_rows::current(tx, workspace).await?;
-        let previous = state.clone();
-        // A rule for a deleted workspace admits nobody. A deletion removes the workspace,
-        // so the rule then names an unknown workspace.
-        if state.admin.is_empty() || state.deleted_at.is_some() {
-            continue;
-        }
-        if let Some(role) = state.members.get(actor) {
-            ensure!(role == "human", "Google cannot claim a service identity");
-            continue;
-        }
-        let command = Command::EnrollMember { id: actor.into() };
-        let position = base_position as i64 + 1;
-        commands::apply(&mut state, "joppa-access", &command, position as u64, "")?;
-        let at: String = tx.query_one("INSERT INTO joppa.events(workspace,position,request_id,actor,command) VALUES($1,$2,$3,'joppa-access',$4::text::jsonb) RETURNING recorded_at::text", &[workspace,&position,&format!("enroll-{actor}"),&serde_json::to_string(&command)?]).await?.get(0);
-        let events = [Event {
-            position: position as u64,
-            actor: "joppa-access".into(),
-            recorded_at: at,
-            command,
-        }];
-        super::board::project_current(
-            tx,
-            workspace,
-            &state,
-            &events,
-            position as u64,
-            Some(&previous),
-        )
-        .await?;
-    }
-    Ok(())
+    let roles = workspaces
+        .iter()
+        .map(|w| (w.clone(), "human".to_owned()))
+        .collect();
+    enroll_roles(pool, actor, google_sub, email, hosted_domain, &roles).await
 }
 
 /// Save the name from a verified profile without changing the bound identity.

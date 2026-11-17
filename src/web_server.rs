@@ -101,10 +101,11 @@ pub async fn serve(pool: Pool, host: &str, port: u16) -> Result<()> {
         .route("/api/workspaces", get(list_route).post(create_workspace))
         .route(
             "/api/email-grants",
-            get(list_email_grants).post(grant_email),
+            get(list_email_grants).post(grant_email_role),
         )
         .route("/api/access", get(list_owned_access))
         .route("/api/access/remove", post(remove_access))
+        .route("/api/access/role", post(change_role))
         .route(
             "/api/domain-grants",
             get(list_domain_grants).post(grant_domain),

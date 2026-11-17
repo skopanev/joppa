@@ -111,6 +111,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/071_own_alias_epoch.sql"),
         include_str!("../migrations/072_search_pending.sql"),
         include_str!("../migrations/073_search_pending_position.sql"),
+        include_str!("../migrations/074_email_grant_roles.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

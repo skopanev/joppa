@@ -14,6 +14,9 @@ use arms_1::*;
 #[path = "commands_arms_2.rs"]
 mod arms_2;
 use arms_2::*;
+#[path = "commands_roles.rs"]
+mod roles;
+pub use roles::*;
 #[path = "commands_arms_3.rs"]
 mod arms_3;
 use arms_3::*;

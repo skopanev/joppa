@@ -76,25 +76,6 @@ pub(super) async fn create_workspace(
             .map(|_| json!({"id": workspace, "title": body.title})),
     )
 }
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct EmailGrant {
-    pub(super) workspace: String,
-    pub(super) email: String,
-}
-/// A human member grants a workspace to a Google email from a signed-in browser.
-pub(super) async fn grant_email(
-    State(app): State<App>,
-    headers: HeaderMap,
-    Json(body): Json<EmailGrant>,
-) -> ApiResult {
-    if headers.contains_key(header::AUTHORIZATION) {
-        return Err(auth_error("Sign in with the browser to grant access"));
-    }
-    let actor = authenticate(&app, &headers).await?;
-    web_auth::check_origin(&headers).map_err(auth_error)?;
-    result(store::grant_email(&app.pool, &body.workspace, &actor, &body.email).await)
-}
 pub(super) async fn list_email_grants(State(app): State<App>, headers: HeaderMap) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
     result(store::list_email_grants(&app.pool, &actor).await)
@@ -139,6 +120,8 @@ pub(super) async fn rename_workspace(
     }
     let actor = authenticate(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
+    let editor = store::require_human(&app.pool, &workspace, &actor).await;
+    editor.map_err(failure)?;
     let command = Command::UpdateWorkspace(joppa::commands::UpdateWorkspaceOp {
         title: Some(body.title.clone()),
         reason: Some("Renamed in Settings".into()),
@@ -200,6 +183,8 @@ pub(super) async fn delete_workspace(
     }
     let actor = authenticate(&app, &headers).await?;
     web_auth::check_origin(&headers).map_err(auth_error)?;
+    let editor = store::require_human(&app.pool, &workspace, &actor).await;
+    editor.map_err(failure)?;
     let command = Command::DeleteWorkspace {
         reason: "Deleted in Settings".into(),
     };

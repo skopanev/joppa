@@ -17,10 +17,10 @@ pub struct Decision<'a> {
     pub recipient: Option<&'a str>,
 }
 
-/// A member with role human is a person; agents and runners are not.
+/// A member with role human or viewer is a person. Agents and runners are not.
 pub fn actor_type(w: &Workspace, actor: &str) -> &'static str {
     match w.members.get(actor).map(String::as_str) {
-        Some("human") => "person",
+        Some("human" | "viewer") => "person",
         _ if actor == w.admin => "person",
         _ => "agent",
     }

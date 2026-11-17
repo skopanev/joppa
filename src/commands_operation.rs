@@ -55,6 +55,7 @@ pub const OPERATIONS: &[Operation] = &[
     op("reorder_tree", &["kind", "expected", "ids"], MEMBER),
     op("member", &["id", "role"], HUMAN_MEMBER),
     op("remove_member", &["id", "reason"], HUMAN_MEMBER),
+    op("set_role", &["id", "role"], HUMAN_MEMBER),
     op("note", &["target", "id", "text"], MEMBER),
     op("withdraw_note", &["target", "id", "reason"], MEMBER),
     op(
