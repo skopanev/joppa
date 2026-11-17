@@ -28,6 +28,8 @@ pub use objects::{
 mod record_results;
 #[path = "store_reports.rs"]
 mod reports;
+#[path = "store_reports_cache.rs"]
+mod reports_cache;
 pub use record_results::record_results;
 pub use reports::test_status;
 #[path = "store_head.rs"]

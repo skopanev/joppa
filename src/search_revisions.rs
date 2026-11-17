@@ -35,12 +35,13 @@ pub(super) async fn project(
 }
 
 /// The hourly pass of one workspace: the missing rows of all objects. The pass holds the
-/// write lock of the workspace, so it never meets a write.
+/// search lock of the workspace, so it never meets another search builder, and a write never
+/// waits for it.
 pub(super) async fn reconcile(pool: &Pool, workspace: &str) -> Result<()> {
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
-    let lock = "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))";
-    tx.execute(lock, &[&workspace]).await?;
+    tx.execute(super::search_pending::LOCK, &[&workspace])
+        .await?;
     project(&*tx, workspace, None).await?;
     tx.commit().await?;
     Ok(())

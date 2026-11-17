@@ -184,13 +184,11 @@ pub(super) async fn current(pool: &Pool, workspace: &str, actor: Option<&str>) -
         row.get::<_, i64>(0) != row.get::<_, i64>(1),
     );
     if pending || behind {
-        tx.execute(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
-            &[&workspace],
-        )
-        .await?;
+        // The search lock keeps the search builders apart, and no write waits for it.
+        tx.execute(super::search_pending::LOCK, &[&workspace])
+            .await?;
         if !super::search_pending::build(&*tx, &workspace).await? && behind {
-            let (state, position) = state_rows::current(&*tx, &workspace).await?;
+            let (state, position) = super::state_cache::read(&*tx, &workspace).await?;
             project(&*tx, &workspace, &state, position, None).await?;
         }
     }

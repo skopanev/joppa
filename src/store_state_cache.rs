@@ -40,7 +40,8 @@ pub(super) async fn take(client: &impl GenericClient, workspace: &str) -> Result
 }
 
 /// The current state of `workspace` without taking it: a copy of the kept state when its key
-/// is current, else the rows. The caller holds the advisory lock of the workspace.
+/// is current, else the rows. A search builder calls it under the search lock, so the state
+/// can be older than the next write, never newer than the rows.
 pub(super) async fn read(client: &impl GenericClient, workspace: &str) -> Result<(Workspace, u64)> {
     let kept = STATES.lock().unwrap().get(workspace).cloned();
     if let Some((kept_key, state)) = kept

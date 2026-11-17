@@ -1,11 +1,20 @@
-//! The search rows that writes leave for later (migration 072). A write adds the objects that
-//! it reaches. Each search read builds their rows first, and the background pass of the
-//! indexer builds them after the writes of a workspace pause, so a write builds no search row.
+//! The search rows that writes leave for later (migrations 072 and 073). A write adds the
+//! objects that it reaches with its journal position. Each search read builds their rows first,
+//! and the background pass of the indexer builds them after the writes of a workspace pause, so
+//! a write builds no search row. The builders hold the search lock, not the write lock: a
+//! builder removes only the objects of the position of its state, and a later write keeps its
+//! rows for the next build.
 use super::*;
 use std::collections::BTreeSet;
 
 /// The address that names every object of the workspace.
 const ALL: &str = "*";
+
+/// The address of a write that reaches no object: the build moves only the search position.
+const MOVE: &str = "#";
+
+/// The lock of the search builders of one workspace. Writes take another key.
+pub(super) const LOCK: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1,91827103))";
 
 /// The pause after a write before the background pass builds the rows.
 const QUIET: std::time::Duration = std::time::Duration::from_millis(300);
@@ -23,32 +32,30 @@ pub(super) async fn add(
     let row = client.query_one(sql, &[&workspace]).await?;
     let current = row.get::<_, bool>(1) || row.get::<_, Option<i64>>(0) == Some(base as i64);
     let list: Vec<&str> = match selected {
+        Some(selected) if current && selected.is_empty() => vec![MOVE],
         Some(selected) if current => selected.iter().map(String::as_str).collect(),
         _ => vec![ALL],
     };
-    // A write that reaches no object moves current rows to its position.
-    if list.is_empty() {
-        let sql = "UPDATE joppa.search_state SET position=$3 WHERE workspace=$1 AND position=$2";
-        let (base, position) = (base as i64, position as i64);
-        client.execute(sql, &[&workspace, &base, &position]).await?;
-        return Ok(());
-    }
-    let sql = "INSERT INTO joppa.search_pending(workspace,address) SELECT $1,unnest($2::text[]) ON CONFLICT DO NOTHING";
-    client.execute(sql, &[&workspace, &list]).await?;
+    let sql = "INSERT INTO joppa.search_pending(workspace,address,position) SELECT $1,unnest($2::text[]),$3 ON CONFLICT (workspace,address) DO UPDATE SET position=greatest(search_pending.position,EXCLUDED.position)";
+    client
+        .execute(sql, &[&workspace, &list, &(position as i64)])
+        .await?;
     Ok(())
 }
 
-/// Build the search rows of the pending objects of `workspace` and remove them. False when no
-/// object waits. The caller holds the write lock of the workspace.
+/// Build the search rows of the pending objects of `workspace` up to the position of its
+/// current state, and remove them. False when no such object waits. The caller holds LOCK.
 pub(super) async fn build(client: &impl GenericClient, workspace: &str) -> Result<bool> {
-    let sql = "DELETE FROM joppa.search_pending WHERE workspace=$1 RETURNING address";
-    let rows = client.query(sql, &[&workspace]).await?;
+    let (state, position) = super::state_cache::read(client, workspace).await?;
+    let sql =
+        "DELETE FROM joppa.search_pending WHERE workspace=$1 AND position<=$2 RETURNING address";
+    let rows = client.query(sql, &[&workspace, &(position as i64)]).await?;
     if rows.is_empty() {
         return Ok(false);
     }
-    let addresses: BTreeSet<String> = rows.iter().map(|r| r.get(0)).collect();
+    let mut addresses: BTreeSet<String> = rows.iter().map(|r| r.get(0)).collect();
+    addresses.remove(MOVE);
     let selected = (!addresses.contains(ALL)).then_some(addresses);
-    let (state, position) = super::state_cache::read(client, workspace).await?;
     super::search::project(client, workspace, &state, position, selected.as_ref()).await?;
     super::search_revisions::project(client, workspace, selected.as_ref()).await?;
     Ok(true)

@@ -43,6 +43,16 @@ pub(in crate::store) async fn update(
     if rules.is_empty() {
         return Ok(());
     }
+    // A computed value reads only objects: their data, parents, links and presence. A write
+    // that changes no object, such as a note or a record of results, changes no value.
+    let same = |a: &String| match (state.objects.get(a), previous.objects.get(a)) {
+        (Some(new), Some(old)) => std::sync::Arc::ptr_eq(new, old),
+        (None, None) => true,
+        _ => false,
+    };
+    if dirty.iter().all(same) {
+        return Ok(());
+    }
     let graph = Graph::new(state);
     let downward = rules
         .values()
