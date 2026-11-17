@@ -144,7 +144,7 @@ common = {'op':'save_object','kind':'note','id':'source','revision':0,'parent':N
           'data':{'title':'Source note','owner':'owner','body':'Original text'},
           'relations':{'related':{'edges':[{'to':'domain:security'}]}},'reason':'Record new information'}
 created = mcp('joppa_command', {'workspace':ws,'request_id':'common-note','command':common})
-# tac:661jb0ex: an MCP write gives no summary and no system_ids.
+# ac:nw58l82w: an MCP write gives no summary and no system_ids.
 assert not {'summary','system_ids'} & created.keys(), created
 common.update(revision=1, data={**common['data'],'body':'Updated text'})
 mcp('joppa_command', {'workspace':ws,'request_id':'common-note-edit','command':common})

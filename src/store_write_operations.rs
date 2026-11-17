@@ -1,7 +1,7 @@
 //! Part of `store_write`: the write of one request.
 use super::*;
 
-/// The write of one request. `mcp` gives the lean MCP receipt (tac:661jb0ex): no `summary`,
+/// The write of one request. `mcp` gives the lean MCP receipt (ac:nw58l82w): no `summary`,
 /// no `system_ids` and no type question. The receipt row stores that reply, so a retry gives it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn write(

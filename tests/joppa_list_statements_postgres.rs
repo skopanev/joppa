@@ -1,4 +1,4 @@
-//! tac:tcospnl8 over a real server: joppa_list gives {id, title} in pages of 25, and
+//! ac:ka04rg1y over a real server: joppa_list gives {id, title} in pages of 25, and
 //! hidden: true only for a workspace that the caller hides, from one SQL statement after the
 //! token check. pg_stat_statements counts the statements, as tests/read_latency.rs reads it.
 #[path = "common/record_world.rs"]
@@ -92,7 +92,7 @@ async fn thirty() -> Result<(Lister, Vec<String>)> {
     Ok((lister, ids))
 }
 
-// tac:tcospnl8
+// ac:ka04rg1y
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
 async fn joppa_list_gives_id_and_title_and_the_own_hidden_flag_from_one_statement() -> Result<()> {

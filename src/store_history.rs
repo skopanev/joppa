@@ -85,7 +85,7 @@ pub async fn read_history(
 }
 
 /// The MCP History read: the same page without the current status of each object, so it reads
-/// no object signal (tac:fhr6fazx).
+/// no object signal (ac:pfewsd6m).
 pub async fn read_history_lean(
     pool: &Pool,
     workspace: &str,

@@ -9,7 +9,7 @@ use crate::embeddings::{self, Embedder};
 use std::collections::BTreeMap;
 
 /// The scope of a search. Both flags are false by default. `offset` skips that many ranked
-/// results, so a cursor continues the same ranking. `lean` is the MCP read (tac:s3ydcg5l): it
+/// results, so a cursor continues the same ranking. `lean` is the MCP read (ac:5za7xuyp): it
 /// counts no index rows, cuts each excerpt at 200 characters and gives the status tone.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Flags {

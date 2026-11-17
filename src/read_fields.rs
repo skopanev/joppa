@@ -60,7 +60,7 @@ pub fn needs_data(fields: &[String]) -> bool {
     })
 }
 
-/// The facts that a read by address loads for `fields` (tac:jogrtcra). Without `fields`, the
+/// The facts that a read by address loads for `fields` (ac:1z012wub). Without `fields`, the
 /// MCP card. A list field reads the object row only.
 pub fn card_needs(fields: Option<&[String]>) -> CardNeeds {
     let Some(fields) = fields else {

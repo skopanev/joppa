@@ -1,4 +1,4 @@
-//! tac:661jb0ex over a real server: an MCP write builds no summary and no system_ids, and it
+//! ac:nw58l82w over a real server: an MCP write builds no summary and no system_ids, and it
 //! keeps the item ID registration. POST /api/workspaces/{w}/commands keeps both keys.
 //! pg_stat_statements counts the statements, as tests/read_latency.rs reads it.
 #[path = "common/record_world.rs"]
@@ -49,7 +49,7 @@ async fn mcp(w: &record_world::World, tool: &str, args: Value) -> Result<Value> 
     w.mcp(&w.bot, tool, args).await?.map_err(anyhow::Error::msg)
 }
 
-// tac:661jb0ex
+// ac:nw58l82w
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
 async fn an_mcp_write_builds_no_summary_and_no_system_ids_and_registers_each_item_id() -> Result<()>

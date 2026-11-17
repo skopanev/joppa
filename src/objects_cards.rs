@@ -1,4 +1,4 @@
-//! The MCP card read of 1 to 25 objects by address (tac:m7qjm2lj, tac:jogrtcra). One
+//! The MCP card read of 1 to 25 objects by address (ac:q90d25sm, ac:1z012wub). One
 //! read-only REPEATABLE READ transaction reads all addresses: one query reads the object rows
 //! through their aliases in the order of the request, and each other fact takes at most one
 //! query for all of them. The facts follow `CardNeeds`, so a read with narrow fields reads

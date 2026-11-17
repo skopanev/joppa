@@ -48,7 +48,7 @@ pub(super) async fn answer(
     if semantic == "exact_match" && !rows.iter().any(|row| row.get::<_, bool>(4)) {
         return Ok(None);
     }
-    // The MCP reply gives no index counters, so it does not count them (tac:s3ydcg5l).
+    // The MCP reply gives no index counters, so it does not count them (ac:5za7xuyp).
     let (total, embedded) = match flags.lean {
         true => (0, 0),
         false => candidates::counts(&tx, scope, flags.all_versions, &bound).await?,

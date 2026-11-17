@@ -1,4 +1,4 @@
-//! tac:s3ydcg5l and tac:fhr6fazx over a real server: an MCP search runs no statement of the
+//! ac:5za7xuyp and ac:pfewsd6m over a real server: an MCP search runs no statement of the
 //! index counters, and an MCP History read loads no object signals. The HTTP routes keep both.
 //! pg_stat_statements counts the statements, as tests/read_latency.rs reads it.
 #[path = "common/record_world.rs"]
@@ -43,7 +43,7 @@ const COUNTERS: [&str; 2] = [
     "count(*) from joppa.search_revisions",
 ];
 
-// tac:s3ydcg5l
+// ac:5za7xuyp
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
 async fn an_mcp_search_runs_no_statement_of_the_index_counters() -> Result<()> {
@@ -82,7 +82,7 @@ async fn an_mcp_search_runs_no_statement_of_the_index_counters() -> Result<()> {
     Ok(())
 }
 
-// tac:fhr6fazx
+// ac:pfewsd6m
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
 async fn an_mcp_history_read_loads_no_object_signals() -> Result<()> {

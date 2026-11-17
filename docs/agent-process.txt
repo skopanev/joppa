@@ -2,6 +2,8 @@ Save a raw incoming signal as an Inbox item: the type with inbox: true, parent:n
 After analysis, put the lasting content into a Source and into REQ and AC nodes, and give them related edges. Then archive the Inbox item with archive_object.
 A Source records an owner decision, a specification or an external standard at a fixed version. When the schema defines ac.sources, set data.sources on every AC. Do not copy sources to the REQ.
 Keep comments (op note) for discussion. A comment is not an Inbox item and not a Source.
+Before work, read the Memory nodes (guide, process, rule, lesson) for your project and role. Save each verified lesson there as a lesson node.
+Read SQL-like tables and data across workspaces with POST /api/data and a read key. Write only through MCP.
 Use a short title. Put context, conditions and evidence in body. Use clean Markdown in authored text.
 Show object references as [Title](kind:id), using the title and address you read. Markdown links do not replace relations.
 

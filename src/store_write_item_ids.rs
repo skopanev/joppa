@@ -2,7 +2,7 @@
 use super::*;
 
 /// Register the public item ID of a saved object. An MCP write stops here: it reads no
-/// `system_ids` (tac:661jb0ex).
+/// `system_ids` (ac:nw58l82w).
 pub(crate) async fn register(
     client: &impl GenericClient,
     workspace: &str,

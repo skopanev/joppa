@@ -91,7 +91,7 @@ pub async fn resolve_item_ids(
 }
 
 /// Whether `kind` is an Inbox type, from the types of the board projection. It reads no tree
-/// schema revision (tac:jogrtcra).
+/// schema revision (ac:1z012wub).
 pub async fn inbox_type(pool: &Pool, workspace: &str, actor: &str, kind: &str) -> Result<bool> {
     let (conn, workspace) = authorized(pool, workspace, actor).await?;
     let sql = "SELECT (first_view->'object_types'->$2->>'inbox')::boolean FROM joppa.board_cache WHERE workspace=$1";

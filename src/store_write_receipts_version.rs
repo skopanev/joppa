@@ -127,7 +127,7 @@ pub async fn execute_remote_input(
 }
 
 /// A joppa_command or joppa_batch write: the lean MCP receipt without `summary`,
-/// `system_ids` and the type question (tac:661jb0ex). HTTP keeps execute_remote_input.
+/// `system_ids` and the type question (ac:nw58l82w). HTTP keeps execute_remote_input.
 pub async fn execute_mcp(
     pool: &Pool,
     workspace: &str,

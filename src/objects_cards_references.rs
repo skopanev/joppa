@@ -1,4 +1,4 @@
-//! Part of the card read: the references of each card, only on request (tac:jogrtcra). One
+//! Part of the card read: the references of each card, only on request (ac:1z012wub). One
 //! query reads the own references (the reference edges) and the computed ones (the addresses
 //! in a data field whose rule reads `from` other nodes) of all cards, each with the title of
 //! its target object.

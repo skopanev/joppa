@@ -18,7 +18,7 @@ async fn public_ids(w: &record_world::World, n: usize) -> Result<Vec<String>> {
     Ok(ids)
 }
 
-// tac:m7qjm2lj
+// ac:q90d25sm
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
 async fn two_and_25_addresses_run_the_same_statements_in_one_transaction() -> Result<()> {
@@ -57,7 +57,7 @@ async fn two_and_25_addresses_run_the_same_statements_in_one_transaction() -> Re
     Ok(())
 }
 
-// tac:m7qjm2lj
+// ac:q90d25sm
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_read_of_many_addresses_keeps_order_duplicates_aliases_and_unknown_objects() -> Result<()>
@@ -108,7 +108,7 @@ async fn a_read_of_many_addresses_keeps_order_duplicates_aliases_and_unknown_obj
     Ok(())
 }
 
-// tac:m7qjm2lj
+// ac:q90d25sm
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn a_save_between_two_statements_changes_no_item_of_the_reply() -> Result<()> {

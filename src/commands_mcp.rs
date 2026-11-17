@@ -77,6 +77,35 @@ pub const OPTIONAL_FIELDS: &[(&str, &[(&str, &str)])] = &[
         "set_tree_schema",
         &[
             (
+                "types",
+                "{type: {...}}: replaces every type. Not with put_types or remove_types",
+            ),
+            (
+                "put_types",
+                "{type: {...}}: adds a type or replaces one type with all its fields",
+            ),
+            (
+                "remove_types",
+                "[type]: removes a type that no present object and no type uses",
+            ),
+            (
+                "priorities",
+                "[value]: the values of data.priority, the first value first",
+            ),
+            ("statuses", "[{tone, label}]: the status list of the board"),
+            (
+                "test_results",
+                "{statuses, fields, ...}: the rules of recorded test results",
+            ),
+            (
+                "status_required",
+                "true: a save of each node needs a status",
+            ),
+            (
+                "filters",
+                "[field]: the data fields that the board offers as filters",
+            ),
+            (
                 "put_relations",
                 "{key: {title, description?}}: adds a relation or replaces its texts",
             ),

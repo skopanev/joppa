@@ -1,4 +1,4 @@
-//! tac:m7qjm2lj and tac:jogrtcra over a real server: a joppa_objects read of 2 to 25
+//! ac:q90d25sm and ac:1z012wub over a real server: a joppa_objects read of 2 to 25
 //! addresses runs in one snapshot with a fixed number of SQL statements, and a read with
 //! fields runs only the queries that its fields need. pg_stat_statements counts the
 //! statements, as tests/read_latency.rs reads it.

@@ -12,7 +12,7 @@ pub async fn file_workspace(pool: &Pool, workspace: &str, actor: &str) -> Result
 }
 
 /// The attachments of the object `target` for an actor who reads the workspace, without the
-/// object read (tac:jogrtcra): `{address, kind, folder, attachments}`. `folder` is the
+/// object read (ac:1z012wub): `{address, kind, folder, attachments}`. `folder` is the
 /// resolved workspace ID, and `attachments` the map of id to file. An alias reads its target.
 pub async fn object_files(
     pool: &Pool,

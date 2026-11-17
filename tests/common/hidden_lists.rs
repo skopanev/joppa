@@ -32,7 +32,7 @@ pub async fn web(w: &World, token: &str, path: &str) -> Result<Vec<String>> {
 }
 
 /// Ok when a joppa_list item is {id, title}, or {id, title, hidden: true} for a workspace that
-/// the caller hides (tac:tcospnl8).
+/// the caller hides (ac:ka04rg1y).
 pub fn lean_item(item: &Value) -> Result<()> {
     let map = item.as_object().with_context(|| format!("item {item}"))?;
     let text = |k: &str| map.get(k).is_some_and(Value::is_string);

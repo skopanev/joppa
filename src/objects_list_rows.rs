@@ -38,7 +38,7 @@ pub(super) async fn list_rows(
     let archived = scope.filter.archived();
     // A member read ($18) keeps the holders of the key and the targets of its edges. The
     // document of a holder has the key in its relations, also a key with no edges. A list
-    // without related_to or a member key reads no edge (tac:jogrtcra).
+    // without related_to or a member key reads no edge (ac:1z012wub).
     let related = match related_to.is_some() {
         true => RELATED,
         false => "$8::text IS NULL",

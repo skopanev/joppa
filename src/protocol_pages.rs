@@ -17,7 +17,7 @@ pub fn limit(a: &Value, default: usize) -> anyhow::Result<usize> {
 }
 
 /// joppa_list: the workspaces that the actor can read, in pages of 25, as {id, title} and
-/// `hidden: true` for a workspace that the actor hides (tac:tcospnl8).
+/// `hidden: true` for a workspace that the actor hides (ac:ka04rg1y).
 pub async fn list(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     let start = match a["cursor"].as_str() {
         Some(c) => c

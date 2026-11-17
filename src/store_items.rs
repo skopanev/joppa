@@ -29,7 +29,7 @@ pub async fn list(pool: &Pool, actor: &str) -> Result<Value> {
     Ok(json!(items))
 }
 
-/// One page of the MCP workspace list and the total, in one statement (tac:tcospnl8). $1 is
+/// One page of the MCP workspace list and the total, in one statement (ac:ka04rg1y). $1 is
 /// the actor. $2 is the allowed set of a rules file, else null: then a bound Google identity
 /// keeps the workspaces of its email and domain grants and the ones it created, as
 /// access::scope does, and an unbound identity keeps each workspace where it is a member.
