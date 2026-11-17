@@ -1,5 +1,5 @@
-//! The search rows that writes leave for later (migrations 072 and 073). A write adds the
-//! objects that it reaches with its journal position. Each search read builds their rows first,
+//! The search rows that writes leave for later (migrations 072 and 073). A write adds one row
+//! for each object that it reaches, with its journal position. Each search read builds their rows first,
 //! and the background pass of the indexer builds them after the writes of a workspace pause, so
 //! a write builds no search row. The builders hold the search lock, not the write lock: a
 //! builder removes only the objects of the position of its state, and a later write keeps its
@@ -36,7 +36,8 @@ pub(super) async fn add(
         Some(selected) if current => selected.iter().map(String::as_str).collect(),
         _ => vec![ALL],
     };
-    let sql = "INSERT INTO joppa.search_pending(workspace,address,position) SELECT $1,unnest($2::text[]),$3 ON CONFLICT (workspace,address) DO UPDATE SET position=greatest(search_pending.position,EXCLUDED.position)";
+    // Only an insert: the rows of a write never meet the rows that a build removes.
+    let sql = "INSERT INTO joppa.search_pending(workspace,address,position) SELECT $1,unnest($2::text[]),$3";
     client
         .execute(sql, &[&workspace, &list, &(position as i64)])
         .await?;
