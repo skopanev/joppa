@@ -39,6 +39,19 @@ pub(super) async fn take(client: &impl GenericClient, workspace: &str) -> Result
     state_rows::current(client, workspace).await
 }
 
+/// The current state of `workspace` without taking it: a copy of the kept state when its key
+/// is current, else the rows. The caller holds the advisory lock of the workspace.
+pub(super) async fn read(client: &impl GenericClient, workspace: &str) -> Result<(Workspace, u64)> {
+    let kept = STATES.lock().unwrap().get(workspace).cloned();
+    if let Some((kept_key, state)) = kept
+        && let Some(key) = key(client, workspace).await?
+        && kept_key == key
+    {
+        return Ok((state, key.0 as u64));
+    }
+    state_rows::current(client, workspace).await
+}
+
 /// The state of a write, to keep after its transaction commits.
 pub(super) struct Kept {
     workspace: String,

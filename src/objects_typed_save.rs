@@ -31,7 +31,10 @@ pub(crate) fn typed_save(
         let snapshot = Snapshot::of(w, Some(key));
         // A criterion that moves to another requirement leaves the old one first.
         let out = criterion_move_out(w, kind, id, &cmd, reason)?;
-        std::sync::Arc::make_mut(&mut w.document_overrides).remove(key);
+        // The shared set is copied only when it changes.
+        if w.document_overrides.contains(key) {
+            std::sync::Arc::make_mut(&mut w.document_overrides).remove(key);
+        }
         if let Some(out) = out {
             commands::apply_inner(w, actor, &out, position, at)?;
         }
@@ -56,7 +59,9 @@ pub(crate) fn typed_save(
             scope.as_ref(),
         );
     } else {
-        std::sync::Arc::make_mut(&mut w.document_overrides).insert(key.to_owned());
+        if !w.document_overrides.contains(key) {
+            std::sync::Arc::make_mut(&mut w.document_overrides).insert(key.to_owned());
+        }
         let owner = string(data, "owner")?;
         commands::human(w, &owner)?;
         if ["project", "intake", "point"].contains(&kind.as_str()) && !w.schema_migrated {

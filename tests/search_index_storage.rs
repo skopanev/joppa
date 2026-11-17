@@ -47,12 +47,13 @@ async fn workspace(pool: &deadpool_postgres::Pool, titles: &[(&str, &str)]) -> R
     Ok(ws)
 }
 
-/// Wait until every search row of the workspace has a vector.
+/// Wait until every search row of the workspace is built and has a vector.
 async fn settled(pool: &deadpool_postgres::Pool, ws: &str) -> Result<()> {
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(20) {
         let pending: i64 = pool.get().await?.query_one("SELECT (SELECT count(*) FROM joppa.search_documents WHERE workspace=$1 AND embedding IS NULL)
-            + (SELECT count(*) FROM joppa.search_revisions WHERE workspace=$1 AND embedding IS NULL)", &[&ws]).await?.get(0);
+            + (SELECT count(*) FROM joppa.search_revisions WHERE workspace=$1 AND embedding IS NULL)
+            + (SELECT count(*) FROM joppa.search_pending WHERE workspace=$1)", &[&ws]).await?.get(0);
         if pending == 0 {
             return Ok(());
         }

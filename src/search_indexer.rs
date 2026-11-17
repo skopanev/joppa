@@ -1,11 +1,10 @@
-//! The indexer gives each search row a vector. One drainer runs. A write commit, the server
-//! start, a retry pass every 5 minutes and a reconcile pass every hour wake it. A wake that
-//! comes during a drain is kept by the Notify permit, so no wake is lost.
-//!
-//! The indexer holds no database connection during a provider request, saves a vector only
-//! when the row still has the content hash of the text that it sent, and copies a vector
-//! that another row with the same hash already has. HTTP 400, 413 or 422 adds one attempt to
-//! the text; after 5 attempts the indexer skips it. Other errors add no attempt.
+//! The indexer builds the search rows that writes leave (search_pending.rs) and gives each
+//! row a vector. One drainer runs. A write wakes it after the writes pause, and so do the
+//! start, a retry pass every 5 minutes and a reconcile pass every hour. The Notify permit
+//! keeps a wake during a drain. The indexer holds no connection during a provider request,
+//! saves a vector only when the row still has the hash of the text that it sent, and copies a
+//! vector that a row with the same hash has. HTTP 400, 413 or 422 adds one attempt to the
+//! text, after 5 attempts the indexer skips it, and other errors add no attempt.
 use super::*;
 use crate::embeddings::{self, Embedder, PROFILE};
 use crate::embeddings_limit::{InputFault, ProviderStatus};
@@ -42,7 +41,7 @@ pub async fn run(pool: Pool, embedder: Embedder) {
         }
         log(drain(&pool, &embedder).await.map(|_| ()));
         tokio::select! {
-            _ = notify.notified() => full = false,
+            _ = notify.notified() => full = super::search_pending::quiet(&notify).await,
             _ = retry.tick() => full = false,
             _ = reconcile_tick.tick() => full = true,
         }
@@ -144,6 +143,7 @@ async fn pending(pool: &Pool) -> Result<Vec<Row>> {
 
 /// One pass: up to 4 batches of 16 pending rows. Returns the rows that it settled.
 pub async fn pass(pool: &Pool, embedder: &Embedder) -> Result<usize> {
+    super::search_pending::pass(pool).await?;
     let rows = pending(pool).await?;
     if rows.is_empty() {
         return Ok(0);
@@ -219,7 +219,7 @@ fn answered(error: &anyhow::Error) -> bool {
 fn target(row: &Row) -> (String, &'static str) {
     if row.table == "search_documents" {
         (
-            "workspace=$1 AND kind=split_part($2,':',1) AND local_id=substr($2,strpos($2,':')+1) AND content_hash=$3 AND $4::int=0".into(),
+            "workspace=$1 AND kind=split_part($2,':',1) AND local_id=substr($2,strpos($2,':')+1) AND content_hash=$3 AND $4::int=0 AND NOT EXISTS(SELECT 1 FROM joppa.search_pending p WHERE p.workspace=$1 AND p.address IN ('*',$2))".into(),
             "search_documents",
         )
     } else {

@@ -97,8 +97,14 @@ pub(super) async fn results_of(
         .filter_map(|(_, saved, _)| saved.as_ref())
         .flat_map(|current| current.keys.iter().flatten().cloned())
         .collect();
+    // A criterion without tests reads no report.
+    if tests.is_empty() {
+        return Ok((vec![], vec![]));
+    }
     let reports: Vec<Report> = client
-        .query("SELECT r.id,r.commit_sha,r.commit_order,(extract(epoch FROM r.received_at)*1000000)::bigint,(extract(epoch FROM greatest(r.received_at,(SELECT max(c.received_at) FROM joppa.test_report_receipts c WHERE c.report_id=r.id)))*1000000)::bigint,r.recorded FROM joppa.test_reports r WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty", &[&workspace])
+        // The receipts of the workspace aggregate once: a lookup for each report would scan
+        // the small receipts table once for each report.
+        .query("SELECT r.id,r.commit_sha,r.commit_order,(extract(epoch FROM r.received_at)*1000000)::bigint,(extract(epoch FROM greatest(r.received_at,c.last))*1000000)::bigint,r.recorded FROM joppa.test_reports r LEFT JOIN (SELECT c.report_id,max(c.received_at) AS last FROM joppa.test_report_receipts c JOIN joppa.test_reports x ON x.id=c.report_id WHERE x.workspace=$1 GROUP BY c.report_id) c ON c.report_id=r.id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty", &[&workspace])
         .await?.iter().map(|r| Report { id:r.get(0),commit:r.get(1),order:r.get(2),received_us:r.get(3),receipt_us:r.get(4),recorded:r.get(5) }).collect();
     let tests: Vec<String> = tests.into_iter().collect();
     let results: Vec<(i64,TestResult)> = client

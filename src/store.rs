@@ -188,6 +188,8 @@ pub use items::{list, list_page, visible};
 pub mod search;
 #[path = "search_indexer.rs"]
 pub mod search_indexer;
+#[path = "search_pending.rs"]
+pub mod search_pending;
 #[path = "search_query.rs"]
 pub mod search_query;
 #[path = "search_revisions.rs"]

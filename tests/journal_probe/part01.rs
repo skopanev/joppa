@@ -62,6 +62,8 @@ async fn fixture() -> anyhow::Result<(Pool, String)> {
 }
 
 async fn snapshot(pool: &Pool, workspace: &str) -> anyhow::Result<BTreeMap<String, Vec<String>>> {
+    // The search rows that the writes left for later come first.
+    joppa::store::search_pending::pass(pool).await?;
     let conn = pool.get().await?;
     let mut out = BTreeMap::new();
     for table in [

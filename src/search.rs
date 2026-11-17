@@ -177,15 +177,22 @@ pub(super) async fn current(pool: &Pool, workspace: &str, actor: Option<&str>) -
     if let Some(actor) = actor {
         access::check(&*tx, &workspace, actor, false).await?;
     }
-    let row=tx.query_one("SELECT COALESCE((SELECT position FROM joppa.search_state WHERE workspace=$1),-1), COALESCE((SELECT max(position) FROM joppa.events WHERE workspace=$1),0)", &[&workspace]).await?;
-    if row.get::<_, i64>(0) != row.get::<_, i64>(1) {
+    let row=tx.query_one("SELECT COALESCE((SELECT position FROM joppa.search_state WHERE workspace=$1),-1), COALESCE((SELECT max(position) FROM joppa.events WHERE workspace=$1),0), EXISTS(SELECT 1 FROM joppa.search_pending WHERE workspace=$1)", &[&workspace]).await?;
+    // The objects that writes left for later come first (search_pending.rs).
+    let (pending, behind) = (
+        row.get::<_, bool>(2),
+        row.get::<_, i64>(0) != row.get::<_, i64>(1),
+    );
+    if pending || behind {
         tx.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
             &[&workspace],
         )
         .await?;
-        let (state, position) = state_rows::current(&*tx, &workspace).await?;
-        project(&*tx, &workspace, &state, position, None).await?;
+        if !super::search_pending::build(&*tx, &workspace).await? && behind {
+            let (state, position) = state_rows::current(&*tx, &workspace).await?;
+            project(&*tx, &workspace, &state, position, None).await?;
+        }
     }
     tx.commit().await?;
     Ok(workspace)

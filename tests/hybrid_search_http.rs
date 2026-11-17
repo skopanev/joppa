@@ -48,10 +48,12 @@ async fn save(root: &str, ws: &str, id: &str, title: &str, revision: u32) -> Res
         "command":{"op":"save_object","kind":"domain","id":id,"revision":revision,"parent":null,"data":{"title":title,"owner":"owner"},"reason":"Search test text"}})).await
 }
 
-/// Rows without a vector that the indexer can still embed, in one workspace or in all.
+/// Rows without a vector that the indexer can still embed, and objects whose rows wait to be
+/// built, in one workspace or in all.
 async fn pending(pool: &deadpool_postgres::Pool, ws: Option<&str>) -> Result<i64> {
     Ok(pool.get().await?.query_one("SELECT (SELECT count(*) FROM joppa.search_documents WHERE ($1::text IS NULL OR workspace=$1) AND embedding IS NULL AND attempts<5)
-        + (SELECT count(*) FROM joppa.search_revisions WHERE ($1::text IS NULL OR workspace=$1) AND embedding IS NULL AND attempts<5)", &[&ws]).await?.get(0))
+        + (SELECT count(*) FROM joppa.search_revisions WHERE ($1::text IS NULL OR workspace=$1) AND embedding IS NULL AND attempts<5)
+        + (SELECT count(*) FROM joppa.search_pending WHERE ($1::text IS NULL OR workspace=$1))", &[&ws]).await?.get(0))
 }
 
 async fn settled(

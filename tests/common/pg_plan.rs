@@ -69,6 +69,8 @@ pub async fn many_nodes(pool: &Pool, ws: &str, count: usize, notes: usize) -> Re
 
 /// Give each search row of the workspace a random vector of the current profile.
 pub async fn vectors(pool: &Pool, ws: &str) -> Result<()> {
+    // The writes leave their search rows for later: build them first.
+    joppa::store::search_pending::pass(pool).await?;
     let conn = pool.get().await?;
     for table in ["search_documents", "search_revisions"] {
         // The `local_id` term makes the subquery run once for each row, so each row gets

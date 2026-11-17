@@ -109,6 +109,12 @@ pub async fn workspace(
         "results":[{"test":"tests/purge.rs > purge > passes","status":"pass"}]}),
     )
     .await?;
+    // A search of this workspace builds its search rows, and one more write leaves a pending
+    // search row. A pass over every workspace would also build the rows of another fixture.
+    store::search_query::find(pool, "owner", &ws, "Checks", None, 10, None).await?;
+    let save = json!({"op":"save_object","kind":"domain","id":"d2","revision":0,"parent":null,
+        "data":{"title":"Pending","owner":"owner"},"reason":"Fixture"});
+    write(pool, &ws, "owner", save).await?;
     Ok((ws, hash))
 }
 

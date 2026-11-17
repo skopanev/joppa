@@ -155,18 +155,12 @@ pub(crate) async fn write(
     }
     ensure_notes(&*tx, &workspace, &mut state, &mut events, base_position).await?;
     let selected = state_rows::affected(&state, Some(&previous))?;
-    super::search::project(
-        &*tx,
-        &workspace,
-        &state,
-        base_position + events.len() as u64,
-        selected.as_ref(),
-    )
-    .await?;
+    // The search rows of the reached objects follow later (search_pending.rs).
+    let position = (base_position, base_position + events.len() as u64);
+    super::search_pending::add(&*tx, &workspace, selected.as_ref(), position).await?;
     let at = (events.as_slice(), base_position + events.len() as u64);
     let reached = selected.clone();
     super::board::project_selected(&*tx, &workspace, &state, at, Some(&previous), reached).await?;
-    super::search_revisions::project(&*tx, &workspace, selected.as_ref()).await?;
     let mut result = if batch {
         json!({"results":results})
     } else {
