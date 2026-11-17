@@ -208,3 +208,31 @@ expire only under a configured Spaces lifecycle rule. An API key may upload and
 download backups but lack permission to inspect lifecycle settings. In that case
 verify retention in the bucket's control panel; do not infer a 30-day policy from
 successful uploads or remove old objects merely to achieve an assumed count.
+
+## Local full export
+
+Download a complete archive of PostgreSQL and DigitalOcean Spaces attachments to
+your local disk with `server/export.sh`:
+
+```sh
+set -a; . ./.env; set +a
+server/export.sh
+```
+
+Pass an explicit output directory as `server/export.sh /private/backups` or set
+`JOPPA_EXPORT_DIR` in `.env`. By default the script writes
+`.local/exports/joppa-export-YYYYMMDDTHHMMSSZ.tar.gz` with mode `0600` and keeps
+verified attachment blobs in `.local/exports/.files-cache/` so repeat runs fetch
+only new files.
+
+Each archive contains:
+
+- `manifest.json`: export timestamp, counts and the SHA-256 digest of `joppa.dump`.
+- `postgres/joppa.dump`: custom-format `pg_dump` verified with `pg_restore --list`.
+- `workspaces/<id>/`: `workspace.json` (schema, aliases and counts), `objects.jsonl`,
+  `revisions.jsonl`, `notes.jsonl`, `state_entries.jsonl`, `test_reports.jsonl`,
+  `test_results.jsonl`, `history_marks.jsonl` and `journal.jsonl` from one
+  `REPEATABLE READ` snapshot.
+- `files/<id>/<sha256>` and `files/index.json`: attachment bytes verified against
+  their SHA-256 hash. Detached files already removed by the 14-day sweep appear
+  in `files/swept.json`.

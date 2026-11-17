@@ -19,6 +19,7 @@ __pycache__/
 !*.env.example
 *.dump
 *.dump.*
+joppa-export-*.tar.gz
 *.sql.gz
 *.sql.zst
 *.tfstate*
