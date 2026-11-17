@@ -71,7 +71,8 @@ To change single types, send `put_types` and `remove_types` in place of `types`:
 
 `relations` is the registry of the relation keys that a node can hold. Every workspace has the
 system relations `depends_on` and `related`. `put_relations` adds a relation or replaces its
-`title` and `description`, and `remove_relations` removes one. A system relation and a relation
+`title`, `description` and `group`, and `remove_relations` removes one. `group` names the group of
+a flow in Flow view: a new name makes a new group. A system relation takes no group. A system relation and a relation
 that a live node holds cannot be removed. A command without them keeps the registry. See
 [relations and other workspaces](links.md).
 

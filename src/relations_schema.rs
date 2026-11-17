@@ -6,7 +6,10 @@ use super::*;
 use crate::model::Workspace;
 use anyhow::{Context, Result, ensure};
 
-/// One relation of the registry. A put replaces the title and the description.
+/// The longest group name of a flow.
+pub const GROUP_MAX: usize = 128;
+
+/// One relation of the registry. A put replaces the title, the description and the group.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct RelationType {
@@ -14,6 +17,9 @@ pub struct RelationType {
     pub title: String,
     #[serde(default)]
     pub description: String,
+    /// The group of a flow in Flow view. A system relation has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// True for depends_on and related. Only the server sets it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system: Option<bool>,
@@ -24,6 +30,7 @@ pub fn system() -> BTreeMap<String, RelationType> {
     let system = |title: &str, description: &str| RelationType {
         title: title.into(),
         description: description.into(),
+        group: None,
         system: Some(true),
     };
     BTreeMap::from([
@@ -58,10 +65,19 @@ pub fn requested(
             "a description is at most {limit} characters"
         );
         let system = registry.get(key).and_then(|old| old.system);
-        let (title, description) = (r.title.clone(), r.description.clone());
+        let group = r.group.as_deref().map(str::trim).filter(|g| !g.is_empty());
+        if let Some(group) = group {
+            ensure!(system.is_none(), "a system relation takes no group");
+            ensure!(
+                group.chars().count() <= GROUP_MAX,
+                "group holds at most {GROUP_MAX} characters"
+            );
+            ensure!(group != "-", "group - names the flows without a group");
+        }
         let r = RelationType {
-            title,
-            description,
+            title: r.title.clone(),
+            description: r.description.clone(),
+            group: group.map(str::to_owned),
             system,
         };
         registry.insert(key.clone(), r);

@@ -44,17 +44,20 @@ A key that the registry does not have is refused: `unknown link relation`. The r
 
 ### The registry
 
-`joppa_tree` gives `schema.relations`: each key with `title`, `description` and `system`.
+`joppa_tree` gives `schema.relations`: each key with `title`, `description`, `group` and `system`.
 Every workspace has the system relations `depends_on` and `related`. Change the registry with
 `set_tree_schema`:
 
 ```json
 {"op": "set_tree_schema", "revision": 7, "reason": "Model the swap flow",
- "put_relations": {"swap": {"title": "Swap", "description": "Client screens"}}}
+ "put_relations": {"swap": {"title": "Swap", "description": "Client screens", "group": "Money"}}}
 ```
 
-- `put_relations` adds a relation, or replaces its `title` and `description`. A key obeys the
-  ID rule. Only the server sets `system`.
+- `put_relations` adds a relation, or replaces its `title`, `description` and `group`. A key
+  obeys the ID rule. Only the server sets `system`.
+- `group` names the group of a flow in Flow view: a new name makes a new group. The server trims
+  it, and an empty group gives no key. A group holds at most 128 characters and is not `-`.
+  `depends_on` and `related` take no group.
 - `remove_relations` removes relations. A system relation and a relation of a live node are
   refused. `restore_object` refuses a node with a removed relation: `declare relation <key> first`.
 - A command without them keeps the registry.

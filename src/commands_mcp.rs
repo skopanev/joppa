@@ -107,7 +107,8 @@ pub const OPTIONAL_FIELDS: &[(&str, &[(&str, &str)])] = &[
             ),
             (
                 "put_relations",
-                "{key: {title, description?}}: adds a relation or replaces its texts",
+                "{key: {title, description?, group?}}: adds a relation or replaces its texts; group \
+                 names the group of a flow in Flow view, not on depends_on or related",
             ),
             (
                 "remove_relations",

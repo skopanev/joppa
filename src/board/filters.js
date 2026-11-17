@@ -14,7 +14,7 @@ import {commonObjectCard} from 'board/card.js';
 import {searchScope,searchRows} from 'board/search-results.js';
 import {fieldPickers} from 'board/filter-fields.js';
 export const LINK_FILTERS=['parent','depth','kind','status','owner','assignee','data'];
-export function commonObjectFilters(root,contents,apply){
+export function commonObjectFilters(root,contents){
   const controls=E('div',undefined,'filter-fields');let request=0;
   const query=new URLSearchParams(location.search);const linked=Object.fromEntries(LINK_FILTERS.map(k=>[k,query.get(k)]).filter(([,v])=>v));
   const picker=(name,label,options)=>{const select=E('select');select.name=name;select.setAttribute('aria-label',label);for(const [value,title] of options){const option=E('option',title);option.value=value;select.append(option);}controls.append(select);return select;};
@@ -33,12 +33,10 @@ export function commonObjectFilters(root,contents,apply){
   // The search box uses the server search of joppa_search and combines with the other filters.
   const search=E('input',undefined,'filter-search');search.type='search';search.placeholder='Search';search.setAttribute('aria-label','Search objects');controls.append(search);
   const scope=searchScope(controls,()=>update());
-  // Flow view gives `apply`: it reads the matches itself and fades the other nodes.
   const update=async()=>{const mine=++request,generation=state.loadNumber;const text=search.value.trim();
     const params={...linked,...Object.fromEntries(pickers.filter(s=>s.value).map(s=>[s.name,s.value])),...(fields.data()?{data:fields.data()}:{})};
     const filtering=Boolean(text||Object.keys(params).length);state.data.filterActive=filtering;
     const current=()=>mine===request&&generation===state.loadNumber&&controls.isConnected;
-    if(apply)return apply({params,text,scope:scope(),filtering,current}).catch(e=>{if(mine===request)notify(e);});
     contents.hidden=!filtering;const holder=E('div');contents.replaceChildren(holder);try{
     if(!filtering){rootCollectionTabs(root);return;}
     for(const panel of root.querySelectorAll('.root-collection'))panel.hidden=true;
@@ -64,7 +62,7 @@ export function commonObjectFilters(root,contents,apply){
   return {controls};
 }
 // One page of the matches: the server search for a text, else the node list.
-export function matches(text,params){
+function matches(text,params){
   return text?api('workspaces/'+encodeURIComponent(state.ws)+'/search?'+new URLSearchParams(params)):objectPart(params);
 }
 // The status filter lists the tones of the schema status list in its order, each with its dot.
