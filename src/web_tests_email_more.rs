@@ -118,7 +118,7 @@ async fn a_member_who_did_not_create_w_adds_maria_and_the_agent_cannot_add_lena(
     )
     .await
     .unwrap();
-    assert_eq!(index["index"]["members"][&maria], "human", "{index}");
+    assert_eq!(index["index"]["members"][&maria], "viewer", "{index}");
     // lena has no grant: her sign-in gives "No workspace access" and leaves no row.
     let (status, Json(error)) = sign_in(&app, &lena_sub, &lena_email).await.unwrap_err();
     assert_eq!(status, StatusCode::FORBIDDEN);

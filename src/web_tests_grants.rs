@@ -137,7 +137,7 @@ async fn a_signed_in_person_reads_a_newly_granted_workspace_after_the_next_page_
         let (members, grants) = members_and_grants(&app, &w, &sam_cookie).await;
         assert_eq!(
             members,
-            json!({sam.clone():"human", alex.clone():"human"}),
+            json!({sam.clone():"human", alex.clone():"viewer"}),
             "reload {reload}"
         );
         assert_eq!(grants, granted.1, "reload {reload}");
@@ -205,7 +205,7 @@ async fn a_configured_user_without_a_google_identity_reads_a_newly_granted_works
         let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
         assert_eq!(
             members,
-            json!({sam.clone():"human", casey.clone():"human"}),
+            json!({sam.clone():"human", casey.clone():"viewer"}),
             "reload {reload}"
         );
         assert_eq!(

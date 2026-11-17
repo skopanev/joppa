@@ -121,7 +121,7 @@ async fn owner_grants_an_email_and_the_google_account_reads_only_that_workspace(
     assert!(index["index"].get("admin").is_none(), "{index}");
     assert_eq!(
         index["index"]["members"],
-        json!({sam.clone():"human", derived.clone():"human"})
+        json!({sam.clone():"human", derived.clone():"viewer"})
     );
     let (status, Json(error)) = read(
         State(app.clone()),

@@ -87,7 +87,7 @@ async fn domain_grant_needs_hd_lena_reads_w_and_people_without_that_hd_do_not() 
     assert_eq!(session_hd(&app, &lena_cookie).await.as_deref(), HEALTHIUM);
     assert_eq!(reload(&app, &lena_cookie, &lena).await, vec![w.clone()]);
     let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
-    assert_eq!(members, json!({sam.clone():"human", lena.clone():"human"}));
+    assert_eq!(members, json!({sam.clone():"human", lena.clone():"viewer"}));
     // Without hd, or with another hd, the domain grant admits nobody.
     let people = [
         ("ex@healthium.one", None),
@@ -146,7 +146,7 @@ async fn domain_grant_needs_hd_lena_reads_w_and_people_without_that_hd_do_not() 
     let (w_members, _) = members_and_grants(&app, &w, &sam_cookie).await;
     assert_eq!(
         w_members,
-        json!({sam.clone():"human", lena.clone():"human"})
+        json!({sam.clone():"human", lena.clone():"viewer"})
     );
     let (w2_members, _) = members_and_grants(&app, &w2, &sam_cookie).await;
     assert_eq!(w2_members, json!({sam.clone():"human"}));

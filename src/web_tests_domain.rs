@@ -91,7 +91,7 @@ async fn owner_adds_a_domain_and_its_google_people_read_w_as_members() -> Result
     let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
     assert_eq!(
         members,
-        json!({sam.clone():"human", maria.clone():"human", lena.clone():"human"})
+        json!({sam.clone():"human", maria.clone():"viewer", lena.clone():"viewer"})
     );
     let (status, error) = plain(
         read(
@@ -211,7 +211,7 @@ async fn the_owner_adds_an_existing_member_again_and_w_does_not_change() -> Resu
     assert_eq!(
         before,
         (
-            json!({sam.clone():"human", maria.clone():"human"}),
+            json!({sam.clone():"human", maria.clone():"viewer"}),
             vec!["maria@example.com".to_owned()]
         )
     );

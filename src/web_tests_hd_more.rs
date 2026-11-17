@@ -59,7 +59,7 @@ async fn domain_grant_needs_hd_of_the_session_that_loads_the_page() -> Result<()
         let (members, _) = members_and_grants(&app, &w, &sam_cookie).await;
         assert_eq!(
             members,
-            json!({sam.clone():"human", actor.clone():"human"}),
+            json!({sam.clone():"human", actor.clone():"viewer"}),
             "{email}"
         );
         assert_eq!(session_hd(&app, without_hd).await, None, "{email}");
@@ -98,7 +98,7 @@ async fn domain_grant_needs_hd_but_an_email_grant_does_not_and_hd_case_does_not_
     let Json(index) = read_w.await.unwrap();
     assert_eq!(
         index["index"]["members"],
-        json!({sam.clone():"human", ex.clone():"human"})
+        json!({sam.clone():"human", ex.clone():"viewer"})
     );
     // A mixed-case hd matches the healthium.one domain grant.
     plain(add_domain(&app, &sam_cookie, &w2, "healthium.one").await).unwrap();
@@ -113,6 +113,6 @@ async fn domain_grant_needs_hd_but_an_email_grant_does_not_and_hd_case_does_not_
     assert_eq!(session_hd(&app, &lena_cookie).await.as_deref(), HEALTHIUM);
     assert_eq!(reload(&app, &lena_cookie, &lena).await, vec![w2.clone()]);
     let (members, _) = members_and_grants(&app, &w2, &sam_cookie).await;
-    assert_eq!(members, json!({sam.clone():"human", lena.clone():"human"}));
+    assert_eq!(members, json!({sam.clone():"human", lena.clone():"viewer"}));
     forget_hd_fixtures(&app, &emails).await
 }

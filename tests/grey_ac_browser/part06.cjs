@@ -122,7 +122,7 @@ test('owner-adds-members-ac8: alex@example.com reloads the board and reads W wit
     const cookies = (await person.cookies()).filter(cookie => cookie.name === 'joppa_session');
     assert.deepEqual(cookies.map(cookie => cookie.value), [f.live.person_cookie]);
     const index = (await read(id)).value.index;
-    assert.equal(index.members[f.live.person], 'human');
+    assert.equal(index.members[f.live.person], 'viewer');
     // The person who signed in shows once, as a member, and the grant is not listed again.
     await f.page.reload();
     await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
@@ -160,7 +160,7 @@ test('owner-adds-members-ac7: alex adds healthium.one to W in Settings', async (
     const granted = f.page.waitForResponse(response => response.url().endsWith('/api/domain-grants') && response.request().method() === 'POST');
     await add.click();
     assert.equal((await granted).status(), 200);
-    const domains = f.page.locator('#workspace-people li[data-kind="domain"] > span');
+    const domains = f.page.locator('#workspace-people li[data-kind="domain"] > span:first-child');
     await domains.filter({hasText: 'healthium.one'}).waitFor();
     assert.deepEqual(await domains.allInnerTexts(), ['Everyone at healthium.one']);
     assert.equal(await workspace.inputValue(), id);

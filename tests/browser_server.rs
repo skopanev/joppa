@@ -118,6 +118,39 @@ async fn serve() -> Result<()> {
         uuid::Uuid::new_v4().simple()
     );
     sessions::create(&pool, &owner_cookie, "owner", None).await?;
+    // Two Google people of one company domain (hd) for domain-grant browser checks.
+    let hd_domain = format!("co-{}.test", uuid::Uuid::new_v4().simple());
+    let (maria_hd, lena_hd) = (
+        format!("google-mhd-{}", uuid::Uuid::new_v4().simple()),
+        format!("google-lhd-{}", uuid::Uuid::new_v4().simple()),
+    );
+    let (maria_hd_email, lena_hd_email) =
+        (format!("maria@{hd_domain}"), format!("lena@{hd_domain}"));
+    let (maria_hd_cookie, lena_hd_cookie) = (
+        format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        ),
+        format!(
+            "{}{}",
+            uuid::Uuid::new_v4().simple(),
+            uuid::Uuid::new_v4().simple()
+        ),
+    );
+    for (actor, email, tok) in [
+        (&maria_hd, &maria_hd_email, &maria_hd_cookie),
+        (&lena_hd, &lena_hd_email, &lena_hd_cookie),
+    ] {
+        pool.get()
+            .await?
+            .execute(
+                "INSERT INTO joppa.google_identities(actor,google_sub,email,hosted_domain) VALUES($1,$1,$2,$3)",
+                &[actor, email, &hd_domain],
+            )
+            .await?;
+        sessions::create(&pool, tok, actor, Some(&hd_domain)).await?;
+    }
     let owner = uuid::Uuid::new_v4().simple().to_string();
     let agent = uuid::Uuid::new_v4().simple().to_string();
     let alex = uuid::Uuid::new_v4().simple().to_string();
@@ -153,6 +186,7 @@ async fn serve() -> Result<()> {
         Command::new(env!("CARGO_BIN_EXE_joppa"))
             .args(["serve", &port.to_string()])
             .env("JOPPA_DATABASE_URL", &url)
+            .env("JOPPA_PUBLIC_URL", &root)
             .env("JOPPA_TOKENS_FILE", tokens)
             .env("JOPPA_LOGIN_USERS_FILE", &aliases)
             .env_remove("JOPPA_GOOGLE_CLIENT_FILE")
@@ -186,7 +220,7 @@ async fn serve() -> Result<()> {
     }
     println!(
         "JOPPA_BROWSER_READY {}",
-        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules,"person":person,"person_cookie":person_cookie,"maria":maria,"maria_email":maria_email,"maria_cookie":maria_cookie,"owner_cookie":owner_cookie})
+        json!({"root":root,"ws":ws,"owner":owner,"agent":agent,"alex":alex,"cookie":cookie,"access_file":rules,"person":person,"person_cookie":person_cookie,"maria":maria,"maria_email":maria_email,"maria_cookie":maria_cookie,"owner_cookie":owner_cookie,"hd_domain":hd_domain,"maria_hd":maria_hd,"maria_hd_email":maria_hd_email,"maria_hd_cookie":maria_hd_cookie,"lena_hd":lena_hd,"lena_hd_email":lena_hd_email,"lena_hd_cookie":lena_hd_cookie})
     );
     std::io::stdout().flush()?;
     tokio::task::spawn_blocking(|| std::io::stdin().read_to_string(&mut String::new())).await??;
