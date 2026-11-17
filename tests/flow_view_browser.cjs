@@ -62,8 +62,8 @@ test('flow-picker: the Relation picker lists the registry in key order and keeps
     await open(f, '', 2);
     const picker = f.page.getByLabel('Relation', {exact: true});
     const options = await picker.locator('option').evaluateAll(list => list.map(o => [o.value, o.textContent.trim()]));
-    assert.deepEqual(options, [['depends_on', 'Depends on'], ['related', 'Related'], ['swap', 'Swap'], ['swap-money', 'Swap money']]);
-    // The first view is the first key that is not a system key, and the link names no relation.
+    assert.deepEqual(options, [['swap', 'Swap'], ['swap-money', 'Swap money']]);
+    // The first view is the first key in key order, and the link names no relation.
     assert.equal(await picker.inputValue(), 'swap');
     assert.equal(link(f).has('relation'), false, 'the first view writes no relation');
     const description = f.page.locator('.flow-description');
@@ -72,15 +72,15 @@ test('flow-picker: the Relation picker lists the registry in key order and keeps
     await picker.selectOption('swap-money');
     await f.page.waitForURL(url => url.searchParams.get('relation') === 'swap-money');
     await description.waitFor({state: 'hidden'});
-    await picker.selectOption('depends_on');
-    await f.page.waitForURL(url => url.searchParams.get('relation') === 'depends_on');
     await f.page.reload();
-    assert.equal(await f.page.getByLabel('Relation', {exact: true}).inputValue(), 'depends_on');
-    assert.equal(link(f).get('relation'), 'depends_on');
-    // An unknown key shows the first view and stays in the link.
-    await open(f, '&relation=nope', 2);
-    assert.equal(await picker.inputValue(), 'swap');
-    assert.equal(link(f).get('relation'), 'nope');
+    assert.equal(await f.page.getByLabel('Relation', {exact: true}).inputValue(), 'swap-money');
+    assert.equal(link(f).get('relation'), 'swap-money');
+    // A system key and an unknown key show the first view and stay in the link.
+    for (const ignored of ['depends_on', 'nope']) {
+      await open(f, '&relation=' + ignored, 2);
+      assert.equal(await picker.inputValue(), 'swap');
+      assert.equal(link(f).get('relation'), ignored);
+    }
     // The tree view ignores relation.
     await tree(f, '&relation=swap');
     const withRelation = await f.page.locator('#tree').innerText();

@@ -36,15 +36,6 @@ test('flow-layout: the flow draws left to right with the arrow of the relation',
     for (const n of (await snap(f)).nodes) {
       assert.ok(Math.hypot(n.dx - at[n.address].dx, n.dy - at[n.address].dy) < 0.5, n.address + ' moved after 2 s');
     }
-    // depends_on draws the arrow from the target A to the node B that depends on it.
-    await f.page.getByLabel('Relation', {exact: true}).selectOption('depends_on');
-    await f.page.waitForFunction(() => document.querySelectorAll('.flow-node').length === 2);
-    const depends = await snap(f);
-    assert.deepEqual(depends.nodes.map(n => n.address).sort(), ['step:a', 'step:b']);
-    assert.deepEqual(edgeNames(depends), ['step:a>step:b']);
-    drawnAsNamed(depends);
-    assert.match(depends.edges[0].marker, /#flow-arrow\b/);
-    assert.equal(depends.lines, 0, 'no parent line');
   } finally { await f.close(); }
 });
 

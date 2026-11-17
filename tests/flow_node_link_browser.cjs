@@ -76,6 +76,7 @@ test('4v583enz: The Flow card copies a link that opens Flow at the node', async 
   try {
     await f.page.context().grantPermissions(['clipboard-read', 'clipboard-write'], {origin: f.live.root});
     await swapWorld(f);
+    await declare(f, {'swap-money': {title: 'Swap money'}});
     await open(f, '&relation=swap', 4);
     await click(f, 'step:b');
     await waitCard(f, 'Check the limit');
@@ -115,9 +116,9 @@ test('4v583enz: The Flow card copies a link that opens Flow at the node', async 
     await closeCard(g);
     await waitSearch(page, s => !('node' in s) && s.relation === 'swap', '×');
 
-    // Depends on gives relation=depends_on and no node.
-    await page.getByLabel('Relation', {exact: true}).selectOption('depends_on');
-    await waitSearch(page, s => s.relation === 'depends_on' && !('node' in s), 'Depends on');
+    // Swap money gives relation=swap-money and no node.
+    await page.getByLabel('Relation', {exact: true}).selectOption('swap-money');
+    await waitSearch(page, s => s.relation === 'swap-money' && !('node' in s), 'Swap money');
 
     // node=step:none shows Swap with no card and keeps node.
     const none = new URL(L);

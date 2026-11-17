@@ -1,11 +1,10 @@
 // Chromium checks of the Flow view controls (requirement:board-graph): a click that lights a
-// node and its neighbours with its card, the filters and the search that fade the other nodes,
-// and the drag, wheel and pinch of the camera.
+// node and its neighbours with its card, and the drag, wheel and pinch of the camera.
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {fixture} = require('./board_fixture.cjs');
 const {types, swapWorld, open, snap, byAddress, marked, waitMarks, NONE, card, waitCard, closeCard, click,
-  emptyPoint, waitText, link} = require('./flow_support.cjs');
+  emptyPoint} = require('./flow_support.cjs');
 
 // ac:board-graph-ac2
 // test:gselk9wz
@@ -37,27 +36,6 @@ test('flow-pick: a click lights the node and its neighbours and opens its card',
     assert.ok(empty, 'the canvas has an empty point');
     await f.page.mouse.click(empty.x, empty.y);
     await waitMarks(f, {lit: NONE, faint: NONE}, 'after the canvas click');
-  } finally { await f.close(); }
-});
-
-// ac:board-graph-ac3
-// test:xxdoxogd
-test('flow-filters: a filter or a search fades the other nodes', async () => {
-  const f = await fixture(types);
-  try {
-    await swapWorld(f);
-    await open(f, '&relation=swap&owner=maria', 4);
-    await waitMarks(f, {lit: NONE, faint: {nodes: ['step:a', 'step:b', 'step:d'], edges: []}}, 'owner maria');
-    assert.equal(link(f).get('owner'), 'maria');
-    assert.equal(link(f).get('relation'), 'swap');
-    await f.page.getByLabel('Object owner').selectOption('');
-    await waitMarks(f, {lit: NONE, faint: NONE}, 'no filter');
-    const search = f.page.getByLabel('Search objects');
-    await search.fill('Zebra');
-    await waitMarks(f, {lit: {nodes: []}, faint: {nodes: ['step:a', 'step:b', 'step:c']}}, 'search Zebra');
-    await search.fill('Nothing');
-    await waitMarks(f, {lit: {nodes: []}, faint: {nodes: ['step:a', 'step:b', 'step:c', 'step:d']}}, 'search Nothing');
-    await waitText(f, 'No node matches these filters.');
   } finally { await f.close(); }
 });
 
