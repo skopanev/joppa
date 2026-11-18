@@ -100,6 +100,7 @@ async fn rotation_restart_and_revocation(
             .status(),
         200
     );
+    tokio::time::sleep(Duration::from_millis(2100)).await;
     assert_eq!(exchange(http, base, &rotation).await?.status(), 400);
     for key in [access, next_access] {
         assert_eq!(

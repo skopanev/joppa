@@ -20,6 +20,7 @@ async fn start(url: &str, tokens: &std::path::Path, port: u16) -> Result<Server>
             .env("JOPPA_DATABASE_URL", url)
             .env("JOPPA_TOKENS_FILE", tokens)
             .env("JOPPA_PUBLIC_URL", &base)
+            .env("JOPPA_REFRESH_GRACE_SECONDS", "2")
             .env_remove("JOPPA_LOGIN_USERS_FILE")
             .env_remove("JOPPA_GOOGLE_CLIENT_FILE")
             .env_remove("JOPPA_ACCESS_RULES_FILE")
