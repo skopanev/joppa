@@ -270,7 +270,7 @@ the authorization server, and `/.well-known/oauth-authorization-server` gives it
 - `/oauth/authorize` needs a code challenge with PKCE S256. Consent uses the Google browser sign-in.
 - `/oauth/approve` needs a browser session, the exact same Origin and explicit consent. It gives a single-use code that expires after five minutes.
 - `POST /oauth/token` takes form-encoded `authorization_code` or `refresh_token` exchanges.
-- Access tokens last one hour. Refresh tokens last 30 days and rotate on each use. A replay revokes the whole token family.
+- Access tokens last one hour. Refresh tokens last 30 days and rotate on each use. A refresh token sent again within 60 s (`JOPPA_REFRESH_GRACE_SECONDS`) gives a new pair of the same family, for a client that lost the reply. A later replay revokes the whole token family. An authorization code works once.
 - `POST /oauth/revoke` with `token` and `client_id` revokes the family.
 
 The only resource is the canonical `/mcp` URL. A different resource is refused. A client that

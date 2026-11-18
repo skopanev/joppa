@@ -105,17 +105,31 @@ pub(crate) async fn token(State(app): State<App>, Form(e): Form<Exchange>) -> OA
         .await
         .map_err(internal)?;
     if inserted == 0 {
-        // Replaying a refresh token revokes the entire family, including its successor.
-        if e.grant_type == "refresh_token" {
-            tx.execute(
-                "INSERT INTO joppa.oauth_revoked(family) VALUES($1) ON CONFLICT DO NOTHING",
-                &[&family],
-            )
-            .await
-            .map_err(internal)?;
-            tx.commit().await.map_err(internal)?;
+        let refresh = e.grant_type == "refresh_token";
+        // A client that lost the reply sends the refresh token again: within the grace it gets
+        // a new pair of the same family (RFC 9700, 4.14). A code gets no grace.
+        let resent = refresh
+            && tx
+                .query_one(
+                    "SELECT consumed_at > clock_timestamp() - make_interval(secs=>$2) FROM joppa.oauth_consumed WHERE hash=$1",
+                    &[&consumed, &(refresh_grace() as f64)],
+                )
+                .await
+                .map_err(internal)?
+                .get::<_, bool>(0);
+        if !resent {
+            // A later replay of a refresh token revokes the entire family, its successors too.
+            if refresh {
+                tx.execute(
+                    "INSERT INTO joppa.oauth_revoked(family) VALUES($1) ON CONFLICT DO NOTHING",
+                    &[&family],
+                )
+                .await
+                .map_err(internal)?;
+                tx.commit().await.map_err(internal)?;
+            }
+            return Err(invalid_grant());
         }
-        return Err(invalid_grant());
     }
     let access = format!("jpa_{}", random());
     let refresh = format!("jpr_{}", random());
@@ -159,4 +173,14 @@ pub(crate) fn challenge(app: &App) -> Response {
         r.headers_mut().insert(header::WWW_AUTHENTICATE,format!("Bearer resource_metadata=\"{base}/.well-known/oauth-protected-resource/mcp\", scope=\"joppa\", error_description=\"Sign in with your MCP client. Codex CLI: codex mcp login joppa\"").parse().unwrap());
     }
     r
+}
+
+/// The seconds in which a refresh token that was exchanged works once more: 60, or
+/// JOPPA_REFRESH_GRACE_SECONDS when it holds an integer of at least 1.
+fn refresh_grace() -> u64 {
+    std::env::var("JOPPA_REFRESH_GRACE_SECONDS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|&n| n >= 1)
+        .unwrap_or(60)
 }
