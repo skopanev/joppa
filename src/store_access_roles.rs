@@ -154,6 +154,10 @@ pub(crate) async fn join(
             Some(&previous),
         )
         .await?;
+        // The enrollment reaches no object, so the search builder only moves its position.
+        // Without it the search rows lag, and the next write rebuilds every object.
+        let at = (base_position, position as u64);
+        super::search_pending::add(tx, workspace, Some(&BTreeSet::new()), at).await?;
     }
     Ok(())
 }

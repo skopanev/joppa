@@ -114,6 +114,9 @@ the CLI, backups and administration. Compile release binaries with 2 build
 jobs (`-j 2`): PostgreSQL and joppa still run during the build. The service
 limits (`MemoryHigh=2G`, `MemoryMax=3G`) hold the workspace states that the
 server keeps in memory and reserve the rest for the database and OS.
+`MemorySwapMax=256M` makes a server over `MemoryMax` stop and restart
+(`Restart=on-failure`) instead of waiting in swap. `MALLOC_ARENA_MAX=2` keeps
+glibc from holding the freed memory of a large build in many arenas.
 
 ## HTTPS and authentication
 

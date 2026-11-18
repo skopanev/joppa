@@ -35,6 +35,12 @@ fn document(
         content_hash,
     }
 }
+/// The objects of one build step. A full build of a large workspace holds the documents of one
+/// step only, so its memory stays small.
+const STEP: usize = 500;
+
+/// Build the search rows of `selected`, or of every object, and remove the rows of the other
+/// selected objects (of every other object without `selected`).
 pub(super) async fn project(
     client: &impl GenericClient,
     workspace: &str,
@@ -42,12 +48,56 @@ pub(super) async fn project(
     position: u64,
     selected: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<()> {
-    let mut addresses = std::collections::BTreeSet::new();
-    for key in state
+    let keys: Vec<&String> = state
         .objects
         .keys()
         .filter(|key| selected.is_none_or(|s| s.contains(*key)))
-    {
+        .collect();
+    let (mut kinds, mut ids) = (vec![], vec![]);
+    for step in keys.chunks(STEP) {
+        let documents = documents(client, workspace, state, step).await?;
+        for d in &documents {
+            kinds.push(d.kind.clone());
+            ids.push(d.local_id.clone());
+        }
+        let payload = serde_json::to_string(&documents)?;
+        drop(documents);
+        client.execute("INSERT INTO joppa.search_documents(workspace,kind,local_id,req,revision,title,content,content_hash)
+      SELECT $1,x.kind,x.local_id,x.req,x.revision,x.title,x.content,x.content_hash FROM jsonb_to_recordset($2::text::jsonb)
+      AS x(kind text,local_id text,req text,revision int,title text,content text,content_hash text)
+      ON CONFLICT(workspace,kind,local_id) DO UPDATE SET req=EXCLUDED.req,revision=EXCLUDED.revision,title=EXCLUDED.title,content=EXCLUDED.content,content_hash=EXCLUDED.content_hash,
+        embedding=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.embedding ELSE NULL END,
+        embedding_profile=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.embedding_profile ELSE NULL END,
+        attempts=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.attempts ELSE 0 END,
+        last_error=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.last_error ELSE NULL END
+      WHERE (search_documents.req,search_documents.revision,search_documents.title,search_documents.content) IS DISTINCT FROM (EXCLUDED.req,EXCLUDED.revision,EXCLUDED.title,EXCLUDED.content)", &[&workspace,&payload]).await?;
+    }
+    // The kept rows are (kind, local_id) pairs, so the delete reads the primary key.
+    let kept = "NOT EXISTS(SELECT 1 FROM unnest($2::text[],$3::text[]) AS x(kind,local_id) WHERE x.kind=d.kind AND x.local_id=d.local_id)";
+    match selected {
+        Some(selected) => {
+            let selected: Vec<&String> = selected.iter().collect();
+            client.execute(&format!("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND (d.kind,d.local_id) IN (SELECT split_part(a,':',1),substr(a,strpos(a,':')+1) FROM unnest($4::text[]) a) AND {kept}"), &[&workspace,&kinds,&ids,&selected]).await?
+        }
+        None => {
+            let sql = format!("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND {kept}");
+            client.execute(&sql, &[&workspace, &kinds, &ids]).await?
+        }
+    };
+    client.execute("INSERT INTO joppa.search_state(workspace,position,canonical_id,reference_prefix) VALUES($1,$2,$3,$4)
+      ON CONFLICT(workspace) DO UPDATE SET position=EXCLUDED.position,canonical_id=EXCLUDED.canonical_id,reference_prefix=EXCLUDED.reference_prefix", &[&workspace,&(position as i64),&state.workspace_id.as_deref().unwrap_or(workspace),&state.reference_prefix.as_deref().unwrap_or(workspace)]).await?;
+    Ok(())
+}
+
+/// The documents of the present objects `keys` that no archived ancestor hides.
+async fn documents(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &Workspace,
+    keys: &[&String],
+) -> Result<Vec<Document>> {
+    let mut addresses = std::collections::BTreeSet::new();
+    for key in keys {
         let mut current = Some(key.as_str());
         let mut seen = std::collections::BTreeSet::new();
         while let Some(key) = current {
@@ -75,10 +125,10 @@ pub(super) async fn project(
     let state = hydrated.as_ref();
     let configured = crate::objects::schema(state);
     let mut documents = vec![];
-    for (key, obj) in state
-        .objects
+    for (key, obj) in keys
         .iter()
-        .filter(|(key, o)| o.current().present && selected.is_none_or(|s| s.contains(*key)))
+        .filter_map(|key| state.objects.get_key_value(*key))
+        .filter(|(_, o)| o.current().present)
     {
         let mut context = vec![];
         let mut current = Some(key.as_str());
@@ -140,35 +190,7 @@ pub(super) async fn project(
             context.join("\n"),
         ));
     }
-    let payload = serde_json::to_string(&documents)?;
-    client.execute("INSERT INTO joppa.search_documents(workspace,kind,local_id,req,revision,title,content,content_hash)
-      SELECT $1,x.kind,x.local_id,x.req,x.revision,x.title,x.content,x.content_hash FROM jsonb_to_recordset($2::text::jsonb)
-      AS x(kind text,local_id text,req text,revision int,title text,content text,content_hash text)
-      ON CONFLICT(workspace,kind,local_id) DO UPDATE SET req=EXCLUDED.req,revision=EXCLUDED.revision,title=EXCLUDED.title,content=EXCLUDED.content,content_hash=EXCLUDED.content_hash,
-        embedding=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.embedding ELSE NULL END,
-        embedding_profile=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.embedding_profile ELSE NULL END,
-        attempts=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.attempts ELSE 0 END,
-        last_error=CASE WHEN search_documents.content_hash=EXCLUDED.content_hash THEN search_documents.last_error ELSE NULL END
-      WHERE (search_documents.req,search_documents.revision,search_documents.title,search_documents.content) IS DISTINCT FROM (EXCLUDED.req,EXCLUDED.revision,EXCLUDED.title,EXCLUDED.content)", &[&workspace,&payload]).await?;
-    // The selected addresses name (kind, local_id) pairs, so the delete reads the primary key.
-    let kept = "NOT EXISTS(SELECT 1 FROM jsonb_to_recordset($2::text::jsonb) AS x(kind text,local_id text) WHERE x.kind=d.kind AND x.local_id=d.local_id)";
-    match selected {
-        Some(selected) => {
-            let selected: Vec<&String> = selected.iter().collect();
-            client.execute(&format!("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND (d.kind,d.local_id) IN (SELECT split_part(a,':',1),substr(a,strpos(a,':')+1) FROM unnest($3::text[]) a) AND {kept}"), &[&workspace,&payload,&selected]).await?
-        }
-        None => {
-            client
-                .execute(
-                    &format!("DELETE FROM joppa.search_documents d WHERE workspace=$1 AND {kept}"),
-                    &[&workspace, &payload],
-                )
-                .await?
-        }
-    };
-    client.execute("INSERT INTO joppa.search_state(workspace,position,canonical_id,reference_prefix) VALUES($1,$2,$3,$4)
-      ON CONFLICT(workspace) DO UPDATE SET position=EXCLUDED.position,canonical_id=EXCLUDED.canonical_id,reference_prefix=EXCLUDED.reference_prefix", &[&workspace,&(position as i64),&state.workspace_id.as_deref().unwrap_or(workspace),&state.reference_prefix.as_deref().unwrap_or(workspace)]).await?;
-    Ok(())
+    Ok(documents)
 }
 pub(super) async fn current(pool: &Pool, workspace: &str, actor: Option<&str>) -> Result<String> {
     let mut conn = pool.get().await?;
