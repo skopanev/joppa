@@ -101,14 +101,10 @@ class PlatformConfig(unittest.TestCase):
         values = unit("joppa.service")
         expected = {
             "ExecStart": ["/opt/joppa/bin/joppa serve 6212 127.0.0.1"],
-            "User": ["joppa"],
-            "Group": ["joppa"],
-            "WorkingDirectory": ["/var/lib/joppa"],
+            "User": ["joppa"], "Group": ["joppa"], "WorkingDirectory": ["/var/lib/joppa"],
             "EnvironmentFile": ["/etc/joppa/runtime.env", "-/etc/joppa/storage.env", "-/etc/joppa/search.env"],
-            "Restart": ["on-failure"],
-            "RestartSec": ["3"],
-            "MemoryHigh": ["2G"],
-            "MemoryMax": ["3G"],
+            "Environment": ["MALLOC_ARENA_MAX=2"], "Restart": ["on-failure"], "RestartSec": ["3"],
+            "MemoryHigh": ["2G"], "MemoryMax": ["3G"], "MemorySwapMax": ["256M"],
             "TasksMax": ["512"],
             "LimitNOFILE": ["8192"],
             "NoNewPrivileges": ["true"],
