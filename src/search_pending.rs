@@ -76,6 +76,7 @@ pub async fn pass(pool: &Pool) -> Result<()> {
     for id in ids {
         super::search::current(pool, &id, None).await?;
     }
+    super::stream::trim_heap();
     Ok(())
 }
 

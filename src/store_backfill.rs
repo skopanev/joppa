@@ -21,6 +21,7 @@ pub async fn backfill_board(pool: &Pool) -> Result<usize> {
         lock(&*tx, &id).await?;
         replay(&*tx, &id).await?;
         tx.commit().await?;
+        super::stream::trim_heap();
     }
     Ok(rows.len())
 }
@@ -59,6 +60,7 @@ pub async fn catch_up_statuses(pool: &Pool, all: bool) -> Result<usize> {
             Err(_) => replay(&*tx, &id).await?,
         }
         tx.commit().await?;
+        super::stream::trim_heap();
         done += 1;
     }
     Ok(done)

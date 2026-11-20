@@ -44,5 +44,7 @@ pub(super) async fn reconcile(pool: &Pool, workspace: &str) -> Result<()> {
         .await?;
     project(&*tx, workspace, None).await?;
     tx.commit().await?;
+    // The hourly reconcile pass builds the rows of every workspace: it frees them here.
+    super::stream::trim_heap();
     Ok(())
 }

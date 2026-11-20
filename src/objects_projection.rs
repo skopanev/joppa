@@ -46,18 +46,23 @@ pub(in crate::store) async fn rebuild(
         .await?;
     // The helpers below read the statuses that were just stored. Each base row has the
     // fields that the helpers read, with the same values as a list row.
-    let mut items: Vec<Value> = vec![];
-    let sql = "SELECT address,kind,signal::text,process::text,parent,present FROM joppa.objects WHERE workspace=$1";
-    crate::store::stream::each(client, sql, &[&workspace], |r| {
-        items.push(base_row(&r));
-        Ok(())
-    })
-    .await?;
-    let base = items.clone();
-    let counted = add_status_tones(client, workspace, &mut items, &types).await?;
-    add_child_counts(&mut items, &counted, &types);
-    let patches: Vec<Value> = base.iter().zip(&items).map(|(b, a)| patch(b, a)).collect();
-    store_column(client, workspace, "rollup", &patches).await?;
+    // The rows of every object leave memory before the computed values, and the heap gives
+    // them back to the system.
+    {
+        let mut items: Vec<Value> = vec![];
+        let sql = "SELECT address,kind,signal::text,process::text,parent,present FROM joppa.objects WHERE workspace=$1";
+        crate::store::stream::each(client, sql, &[&workspace], |r| {
+            items.push(base_row(&r));
+            Ok(())
+        })
+        .await?;
+        let base = items.clone();
+        let counted = add_status_tones(client, workspace, &mut items, &types).await?;
+        add_child_counts(&mut items, &counted, &types);
+        let patches: Vec<Value> = base.iter().zip(&items).map(|(b, a)| patch(b, a)).collect();
+        store_column(client, workspace, "rollup", &patches).await?;
+    }
+    crate::store::stream::trim_heap();
     super::computed::rebuild(client, workspace, state).await?;
     super::dimensions::project(client, workspace, state).await
 }

@@ -165,6 +165,7 @@ pub async fn migrate_notes(pool: &Pool) -> Result<()> {
     tx.batch_execute(RELATIONS_ONLY).await?;
     migrate_notes_in(&*tx).await?;
     tx.commit().await?;
+    super::stream::trim_heap();
     Ok(())
 }
 pub async fn check_journal(pool: &Pool) -> Result<()> {
@@ -174,6 +175,7 @@ pub async fn check_journal(pool: &Pool) -> Result<()> {
         .await?
     {
         let _: (Workspace, Vec<Event>) = load(&**conn, row.get(0)).await?;
+        super::stream::trim_heap();
     }
     Ok(())
 }

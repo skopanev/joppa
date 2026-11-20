@@ -218,6 +218,12 @@ pub(crate) async fn write(
     if purged {
         super::remove_folder(&workspace).await;
     }
+    // A write that reached every object frees a copy of the workspace.
+    let full = selected.is_none() || purged;
+    drop((previous, events, refs, input));
+    if full {
+        super::stream::trim_heap();
+    }
     super::search_indexer::wake();
     Ok(result)
 }

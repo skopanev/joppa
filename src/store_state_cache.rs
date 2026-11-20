@@ -42,11 +42,15 @@ impl Cache {
     }
 
     /// Keep the state of `workspace`. The states used least recently leave while the kept
-    /// objects pass CAP, and this state stays.
-    fn insert(&mut self, workspace: String, key: Key, state: Workspace) {
+    /// objects pass CAP, and this state stays. Gives the states that left, so the caller frees
+    /// them outside the lock.
+    fn insert(&mut self, workspace: String, key: Key, state: Workspace) -> Vec<Workspace> {
         self.tick += 1;
-        self.states
+        let mut left = vec![];
+        let old = self
+            .states
             .insert(workspace.clone(), (key, state, self.tick));
+        left.extend(old.map(|(_, state, _)| state));
         let objects = |c: &Cache| {
             c.states
                 .values()
@@ -61,8 +65,9 @@ impl Cache {
                 .min_by_key(|(_, (_, _, used))| *used)
                 .map(|(w, _)| w.clone());
             let Some(oldest) = oldest else { break };
-            self.states.remove(&oldest);
+            left.extend(self.states.remove(&oldest).map(|(_, state, _)| state));
         }
+        left
     }
 }
 
@@ -114,8 +119,15 @@ pub(super) struct Kept {
 impl Kept {
     /// Keep the state. Call it only after the commit succeeded.
     pub(super) fn keep(self) {
-        let mut states = STATES.lock().unwrap();
-        states.insert(self.workspace, self.key, self.state);
+        let left = STATES
+            .lock()
+            .unwrap()
+            .insert(self.workspace, self.key, self.state);
+        // A state that left the cache frees a whole workspace: the heap gives it back.
+        if left.iter().any(|w| w.objects.len() > super::stream::PART) {
+            drop(left);
+            super::stream::trim_heap();
+        }
     }
 }
 
