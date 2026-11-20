@@ -68,8 +68,9 @@ pub(in crate::store) async fn update(
         .collect();
     let criteria = super::super::reports::criteria_of(state, &tested);
     let rules = crate::test_rules::rules(state)?;
+    let keys: Vec<String> = dimensions.iter().map(|d| d.field.clone()).collect();
     let (reports, results) =
-        super::super::reports::results_of(client, workspace, &criteria).await?;
+        super::super::reports::results_of(client, workspace, &criteria, &keys).await?;
     let checks = crate::manual_checks::Checks::of(state, &tested);
     let mut tones: BTreeMap<&String, serde_json::Map<String, Value>> = BTreeMap::new();
     for combination in &dims::combinations(&dimensions) {

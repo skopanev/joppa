@@ -774,6 +774,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "deadpool-postgres",
+ "futures-util",
  "jsonwebtoken",
  "quick-xml",
  "reqwest",

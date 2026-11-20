@@ -112,10 +112,10 @@ The `postgres-8gb.conf` settings are an initial budget, not a measured capacity.
 `max_connections = 100` leaves room for the 32 connections of the server pool,
 the CLI, backups and administration. Compile release binaries with 2 build
 jobs (`-j 2`): PostgreSQL and joppa still run during the build. The service
-limit `MemoryMax=3G` holds the workspace states that the server keeps in memory
-and reserves the rest for the database and OS. The unit sets no `MemoryHigh`:
-its reclaim stalled the server for hours. `MemorySwapMax=256M` makes a server
-over `MemoryMax` stop and restart (`Restart=on-failure`) instead of waiting in swap. `MALLOC_ARENA_MAX=2` keeps
+limits (`MemoryHigh=2G`, `MemoryMax=3G`) hold the workspace states that the
+server keeps in memory and reserve the rest for the database and OS.
+`MemorySwapMax=256M` makes a server over `MemoryMax` stop and restart
+(`Restart=on-failure`) instead of waiting in swap. `MALLOC_ARENA_MAX=2` keeps
 glibc from holding the freed memory of a large build in many arenas.
 
 ## HTTPS and authentication

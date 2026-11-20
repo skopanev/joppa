@@ -1,20 +1,22 @@
 //! Criterion status from recorded test results.
 //!
-//! Each listed test counts with its latest result. The deciding record for a test is
-//! the newest one that names the test. The block test_results of the tree schema gives
-//! the rules. With same_commit fail_wins, a failure in any record of the commit of that
-//! record decides. Else, and with latest_wins, only the deciding record counts: an older
-//! skip or todo never hides a newer result. The newest row gives the message and fields. A criterion is
-//! green when the outcome of every listed test is in green_if_all, and red when one is in
-//! red_if_any. It shows the oldest commit among its tests.
-//! A skip or todo counts only in a record. Older stored reports did not run those tests.
-//! With reset_on_change, a change above a criterion sets its boundary. Records received at or before it do
-//! not count. After it, the latest eligible result of each listed test decides, also
-//! when the results come from several records. An identical repeat of a record is
-//! a new receipt of it, and its latest receipt decides whether it came after the change.
+//! Each listed test counts with its latest result. The deciding record for a test is the newest
+//! one that names the test. The block test_results of the tree schema gives the rules. With
+//! same_commit fail_wins, a failure in any record of the commit of that record decides. Else, and
+//! with latest_wins, only the deciding record counts: an older skip or todo never hides a newer
+//! result. The newest row gives the message and fields. A criterion is green when the outcome of
+//! every listed test is in green_if_all, and red when one is in red_if_any. It shows the oldest
+//! commit among its tests. A skip or todo counts only in a record. Older stored reports did not
+//! run those tests. With reset_on_change, a change above a criterion sets its boundary. Records
+//! received at or before it do not count. After it, the latest eligible result of each listed
+//! test decides, also when the results come from several records. An identical repeat of a
+//! record is a new receipt of it, and its latest receipt decides whether it came after the change.
 //! After a change, a draft list is decided once every listed test has an eligible result.
+#[path = "ac_tests_boundary.rs"]
+mod boundary;
 use crate::result_shape::ResultShape;
 use crate::test_rules::outcome;
+pub use boundary::Boundary;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -46,31 +48,6 @@ pub struct Report {
     pub receipt_us: i64,
 }
 
-/// The latest change at or above a criterion, from `Workspace::criterion_boundaries`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Boundary {
-    /// No change reset the criterion: every report counts.
-    None,
-    /// Only reports received after this time, in microseconds, count.
-    After(i64),
-    /// The stored boundary cannot be read, so no report counts.
-    Unreadable,
-}
-
-impl Boundary {
-    /// Read a stored journal `recorded_at` time.
-    pub fn read(stored: Option<&str>) -> Self {
-        let Some(at) = stored else {
-            return Self::None;
-        };
-        chrono::DateTime::parse_from_rfc3339(at)
-            .or_else(|_| chrono::DateTime::parse_from_str(at, "%Y-%m-%d %H:%M:%S%.f%#z"))
-            .map_or(Self::Unreadable, |time| {
-                Self::After(time.timestamp_micros())
-            })
-    }
-}
-
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct TestStatus {
     pub address: String,
@@ -86,6 +63,9 @@ pub struct TestStatus {
     pub fields: Option<serde_json::Value>,
     #[serde(skip)]
     order: Option<i64>,
+    /// The report of the row that gives the message and the fields.
+    #[serde(skip)]
+    pub(crate) row: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -136,6 +116,7 @@ fn test_status(
             status_name: None,
             fields: None,
             order: None,
+            row: None,
         };
     };
     let same_commit: Vec<&Report> = reports
@@ -163,9 +144,11 @@ fn test_status(
             .find(|s| own.clone().any(|(_, r)| r.status == *s))
             .unwrap_or("pass")
     };
-    let rows: Vec<&TestResult> = rows.into_iter().map(|(_, r)| r).collect();
     // The newest row with the decided status gives the message, the status name and the fields.
-    let row = rows.iter().find(|r| r.status == status);
+    let (report, row) = match rows.into_iter().find(|(_, r)| r.status == status) {
+        Some((id, r)) => (Some(id), Some(r)),
+        None => (None, None),
+    };
     TestStatus {
         address: address.into(),
         status: status.into(),
@@ -182,6 +165,7 @@ fn test_status(
         status_name: row.and_then(|r| r.status_name.clone()),
         fields: row.and_then(|r| r.fields.clone()),
         order: Some(deciding.order),
+        row: report,
     }
 }
 

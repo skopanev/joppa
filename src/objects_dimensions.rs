@@ -42,7 +42,9 @@ pub(in crate::store) async fn project(
         .collect();
     let criteria = super::reports::criteria_of(state, &tested);
     let rules = crate::test_rules::rules(state)?;
-    let (reports, results) = super::reports::results_of(client, workspace, &criteria).await?;
+    let keys: Vec<String> = dimensions.iter().map(|d| d.field.clone()).collect();
+    let (reports, results) =
+        super::reports::results_of(client, workspace, &criteria, &keys).await?;
     let checks = crate::manual_checks::Checks::of(state, &tested);
     let mut tones: BTreeMap<String, BTreeMap<String, &'static str>> = BTreeMap::new();
     for combination in &combinations {

@@ -82,15 +82,22 @@ async fn statuses_for_criteria(
     if criteria.is_empty() {
         return Ok(Default::default());
     }
-    let (reports, results) = results_of(client, workspace, &criteria).await?;
-    compute(criteria, &reports, &results, rules, checks)
+    let (reports, results) = results_of(client, workspace, &criteria, &[]).await?;
+    let mut statuses = compute(criteria, &reports, &results, rules, checks)?;
+    drop(results);
+    super::reports_details::fill(client, workspace, &mut statuses, rules).await?;
+    Ok(statuses)
 }
 
-/// The reports of the workspace and the results of the tests of `criteria`.
+/// The reports of the workspace and the results of the tests of `criteria`. A large workspace
+/// has hundreds of thousands of results, so the rows stream, and each keeps only what decides a
+/// status: the report, the test, the status, the status name and the `keys` of its fields (the
+/// dimensions). reports_details.rs reads the message and the fields of the deciding rows.
 pub(super) async fn results_of(
     client: &impl GenericClient,
     workspace: &str,
     criteria: &[(String, Option<Listed>, Boundary)],
+    keys: &[String],
 ) -> Result<(std::sync::Arc<Vec<Report>>, Vec<(i64, TestResult)>)> {
     let tests: std::collections::BTreeSet<String> = criteria
         .iter()
@@ -103,9 +110,23 @@ pub(super) async fn results_of(
     }
     let reports = super::reports_cache::reports(client, workspace).await?;
     let tests: Vec<String> = tests.into_iter().collect();
-    let results: Vec<(i64,TestResult)> = client
-        .query("SELECT t.report_id,t.address,t.status,t.duration_ms,t.message,t.status_name,t.fields::text FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)", &[&workspace,&tests])
-        .await?.iter().map(|r| (r.get(0),TestResult { address:r.get(1),status:r.get(2),duration_ms:r.get(3),message:r.get(4),status_name:r.get(5),fields:r.get::<_,Option<String>>(6).and_then(|f| serde_json::from_str(&f).ok()) })).collect();
+    let sql = "SELECT t.report_id,t.address,t.status,t.status_name,CASE WHEN cardinality($3::text[])>0 THEN (SELECT jsonb_object_agg(key,value) FROM jsonb_each(t.fields) WHERE key=ANY($3))::text END FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)";
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 3] = [&workspace, &tests, &keys];
+    let rows = client.query_raw(sql, params).await?;
+    futures_util::pin_mut!(rows);
+    let mut results = vec![];
+    while let Some(r) = futures_util::TryStreamExt::try_next(&mut rows).await? {
+        let fields = r.get::<_, Option<String>>(4);
+        let result = TestResult {
+            address: r.get(1),
+            status: r.get(2),
+            duration_ms: None,
+            message: None,
+            status_name: r.get(3),
+            fields: fields.and_then(|f| serde_json::from_str(&f).ok()),
+        };
+        results.push((r.get(0), result));
+    }
     Ok((reports, results))
 }
 
@@ -182,7 +203,20 @@ pub(super) fn compute(
             Some((manual, expires)) => (manual, Some(expires)),
             None => (status, None),
         };
+        // The deciding row of each test: its report and the stored names of the test, for the
+        // message and the fields (reports_details.rs).
+        let names: Vec<Vec<String>> = match current.and_then(|r| r.boundaries.as_ref()) {
+            Some(_) => keys.to_vec(),
+            None => tests.iter().map(|t| vec![t.clone()]).collect(),
+        };
+        let rows: Vec<Option<i64>> = status.tests.iter().map(|t| t.row).collect();
         let mut status = serde_json::to_value(status)?;
+        let each = status["tests"].as_array_mut().into_iter().flatten();
+        for ((test, row), names) in each.zip(rows).zip(names) {
+            if let Some(report) = row {
+                test["row"] = json!({"report": report, "names": names});
+            }
+        }
         // A manual status also gives the tone of a criterion without test nodes, and the date
         // of a deciding pass that expires: the check run finds it by this value.
         if let Some(expires) = manual {
