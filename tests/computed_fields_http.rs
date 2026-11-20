@@ -61,9 +61,22 @@ async fn save(
     w.command(&w.bot, command).await
 }
 
-/// The stage that a read of the node gives, or null.
+/// The stage that a read of the node gives, or null: from `data` when own, else `computed`.
 async fn stage_of(w: &World, address: &str) -> Result<Value> {
-    Ok(w.object(address).await?["data"]["stage"].clone())
+    let card = w.object(address).await?;
+    let kind = address.split_once(':').map_or("", |(k, _)| k);
+    let tree = w
+        .mcp(&w.bot, "joppa_tree", json!({}))
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    let from = tree["schema"]["types"][kind]["fields"]["stage"]["from"]
+        .as_str()
+        .unwrap_or("own");
+    Ok(if from == "own" {
+        card["data"]["stage"].clone()
+    } else {
+        card["computed"]["stage"].clone()
+    })
 }
 
 /// Check the stage of each listed node and the nodes of the data filter `stage`.

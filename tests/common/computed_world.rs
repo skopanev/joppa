@@ -71,7 +71,11 @@ pub async fn expect(
     filter: (Value, &[&str]),
 ) -> Result<()> {
     for (address, value) in wanted {
-        let found = w.object(address).await?["data"][field].clone();
+        let card = w.object(address).await?;
+        let found = match &card["data"][field] {
+            Value::Null => card["computed"][field].clone(),
+            v => v.clone(),
+        };
         ensure!(&found == value, "{address}: {found} and not {value}");
     }
     let args = json!({"parent":"*","data":{field:filter.0},"limit":25});

@@ -175,3 +175,144 @@ async fn comments_active_and_comments_latest_skip_withdrawn_and_keep_comments_in
     ensure!(raw_all["comments"]["total"] == 31, "{raw_all}");
     Ok(())
 }
+
+// ac:478njhfy
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn mcp_reads_separate_authored_data_and_computed_while_http_merges() -> Result<()> {
+    let w = record_world::world(&["tests/x.rs > computed_sep"]).await?;
+
+    // First give ac an own stage field so revision 1 of ac:a authors stage="to_prepare", then switch stage on ac to from="status".
+    let tree = ok(&w, "joppa_tree", json!({})).await?;
+    let mut ac_own = tree["schema"]["types"]["ac"].clone();
+    ac_own["fields"] = json!({"stage": {"type": "enum", "values": ["to_prepare", "to_implement", "done"]}});
+    w.command(
+        &w.owner,
+        json!({"op": "set_tree_schema", "revision": tree["schema"]["revision"], "put_types": {"ac": ac_own}, "reason": "Own stage first"}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+
+    w.command(
+        &w.bot,
+        json!({"op": "save_object", "kind": "ac", "id": "a", "revision": 1, "parent": "requirement:r", "data": {"title": "A", "owner": "owner", "stage": "to_prepare"}, "reason": "Author stage"}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+
+    let tree = ok(&w, "joppa_tree", json!({})).await?;
+    let mut ac_comp = tree["schema"]["types"]["ac"].clone();
+    ac_comp["fields"] = json!({
+        "stage": {
+            "type": "enum",
+            "values": ["to_prepare", "to_implement", "done"],
+            "from": "status",
+            "map": {"orange": "to_prepare", "blue": "to_implement", "green": "done"}
+        }
+    });
+    w.command(
+        &w.owner,
+        json!({"op": "set_tree_schema", "revision": tree["schema"]["revision"], "put_types": {"ac": ac_comp}, "reason": "Computed stage"}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+
+    // Also create ac:b under computed stage so ac:b has zero authored stage in data.
+    w.command(
+        &w.bot,
+        json!({"op": "save_object", "kind": "ac", "id": "b", "revision": 0, "parent": "requirement:r", "data": {"title": "B", "owner": "owner"}, "reason": "Pure computed ac"}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+
+    w.recorded(
+        &"c".repeat(40),
+        json!([{"test": "tests/x.rs > computed_sep", "status": "pass"}]),
+    )
+    .await?;
+
+    let card_a = ok(&w, "joppa_objects", json!({"address": "ac:a"})).await?;
+    ensure!(
+        card_a["data"]["stage"] == "to_prepare" && card_a["computed"] == json!({"stage": "done"}),
+        "{card_a}"
+    );
+    let card_b = ok(&w, "joppa_objects", json!({"address": "ac:b"})).await?;
+    ensure!(
+        card_b["data"].get("stage").is_none() && card_b["computed"] == json!({"stage": "to_prepare"}),
+        "{card_b}"
+    );
+
+    let f_comp = ok(
+        &w,
+        "joppa_objects",
+        json!({"address": "ac:a", "fields": ["computed"]}),
+    )
+    .await?;
+    let f_dot = ok(
+        &w,
+        "joppa_objects",
+        json!({"address": "ac:a", "fields": ["computed.stage"]}),
+    )
+    .await?;
+    let f_bare_a = ok(
+        &w,
+        "joppa_objects",
+        json!({"address": "ac:a", "fields": ["stage"]}),
+    )
+    .await?;
+    let f_bare_b = ok(
+        &w,
+        "joppa_objects",
+        json!({"address": "ac:b", "fields": ["stage"]}),
+    )
+    .await?;
+    let f_data = ok(
+        &w,
+        "joppa_objects",
+        json!({"address": "ac:a", "fields": ["data"]}),
+    )
+    .await?;
+    ensure!(
+        f_comp == json!({"computed": {"stage": "done"}})
+            && f_dot == json!({"computed.stage": "done"})
+            && f_bare_a == json!({"stage": "to_prepare"})
+            && f_bare_b == json!({"stage": "to_prepare"})
+            && f_data["data"]["stage"] == "to_prepare",
+        "{f_comp} / {f_dot} / {f_bare_a} / {f_bare_b} / {f_data}"
+    );
+
+    let rev1 = ok(
+        &w,
+        "joppa_objects",
+        json!({"address": "ac:a", "revision": 1, "fields": ["computed"]}),
+    )
+    .await?;
+    ensure!(rev1 == json!({"computed": {}}), "{rev1}");
+
+    let list = ok(
+        &w,
+        "joppa_objects",
+        json!({"kind": "ac", "fields": ["computed"]}),
+    )
+    .await?;
+    ensure!(
+        list["items"]
+            == json!([
+                {"address": "ac:a", "computed": {"stage": "done"}},
+                {"address": "ac:b", "computed": {"stage": "to_prepare"}}
+            ]),
+        "{list}"
+    );
+
+    let http: Value = w
+        .http
+        .get(format!("{}/api/workspaces/{}/objects?address=ac:a", w.root, w.ws))
+        .bearer_auth(&w.bot)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    ensure!(http["document"]["data"]["stage"] == "done", "{http}");
+    Ok(())
+}
