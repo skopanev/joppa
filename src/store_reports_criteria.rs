@@ -33,9 +33,18 @@ fn criteria_of(
     targets
         .iter()
         .filter_map(|target| {
-            let kind = &state.objects.get(target)?.kind;
-            let reset = types
-                .get(kind)
+            let object = state.objects.get(target)?;
+            let criterion_kind = match types.get(&object.kind).map(|t| t.role.as_str()) {
+                Some(crate::test_nodes::ROLE) => object
+                    .current()
+                    .parent
+                    .as_deref()
+                    .and_then(|p| state.objects.get(crate::objects::resolve_address(state, p)))
+                    .map(|p| p.kind.as_str()),
+                _ => Some(object.kind.as_str()),
+            };
+            let reset = criterion_kind
+                .and_then(|k| types.get(k))
                 .and_then(|t| t.reset_on_change)
                 .unwrap_or(reset);
             let boundary = match reset {

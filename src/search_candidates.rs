@@ -88,7 +88,7 @@ pub(super) async fn words(
         AND (d.kind||':'||d.local_id=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=d.workspace AND address=$2),$2)
           OR ($2 ~ '^[a-z0-9]{{8}}$' AND (d.local_id=$2 OR d.kind||':'||d.local_id IN (SELECT target FROM joppa.object_aliases WHERE workspace=d.workspace AND split_part(address,':',2)=$2)))))
       SELECT workspace,kind,local_id,rev,bool_or(exact),bool_or(item) FROM matches GROUP BY workspace,kind,local_id,rev
-      ORDER BY bool_or(exact) DESC,max(rank) DESC,workspace,kind,local_id,rev"),
+      ORDER BY bool_or(exact) DESC,max(rank) DESC,EXISTS(SELECT 1 FROM joppa.search_documents c WHERE c.workspace=matches.workspace AND c.kind=matches.kind AND c.local_id=matches.local_id) DESC,workspace,kind,local_id,rev"),
       &params(vec![&scope, &query], &bound.narrows(), bound)).await?)
 }
 

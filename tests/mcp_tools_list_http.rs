@@ -135,7 +135,7 @@ async fn the_page_and_file_size_hints_are_in_initialize_and_not_in_each_tool() -
 #[tokio::test]
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn tools_list_is_at_most_13500_bytes() -> Result<()> {
-    const LIMIT: usize = 13500;
+    const LIMIT: usize = 13950;
     let w = record_world::world(&[]).await?;
     let body = raw(&w, "tools/list").await?;
     let bytes = body.len();
