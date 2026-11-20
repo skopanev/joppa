@@ -113,7 +113,7 @@ pub(super) async fn results_of(
     }
     let reports = super::reports_cache::reports(client, workspace).await?;
     let tests: Vec<String> = tests.into_iter().collect();
-    let sql = "SELECT t.report_id,t.address,t.status,t.status_name,CASE WHEN cardinality($3::text[])>0 THEN (SELECT jsonb_object_agg(key,value) FROM jsonb_each(t.fields) WHERE key=ANY($3))::text END FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2) ORDER BY t.report_id DESC";
+    let sql = "SELECT t.report_id,t.address,t.status,t.status_name,CASE WHEN cardinality($3::text[])>0 THEN (SELECT jsonb_object_agg(key,value) FROM jsonb_each(t.fields) WHERE key=ANY($3))::text END FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2) ORDER BY t.report_id DESC, t.ctid";
     let params: [&(dyn tokio_postgres::types::ToSql + Sync); 3] = [&workspace, &tests, &keys];
     let rows = client.query_raw(sql, params).await?;
     futures_util::pin_mut!(rows);

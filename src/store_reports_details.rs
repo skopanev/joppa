@@ -22,7 +22,7 @@ pub(super) async fn fill(
     }
     let mut found = Found::new();
     if !reports.is_empty() {
-        let sql = "SELECT t.report_id,t.address,t.status,t.message,t.fields::text FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND t.report_id=ANY($2) AND t.address=ANY($3)";
+        let sql = "SELECT t.report_id,t.address,t.status,t.message,t.fields::text FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND t.report_id=ANY($2) AND t.address=ANY($3) ORDER BY t.ctid";
         for r in client.query(sql, &[&workspace, &reports, &names]).await? {
             let fields = r.get::<_, Option<String>>(4);
             let fields = fields.and_then(|f| serde_json::from_str(&f).ok());
