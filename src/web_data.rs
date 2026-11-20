@@ -45,7 +45,7 @@ pub(super) async fn data(
     };
     let embedder = app.embedder.as_ref();
     match store::read_data(&app.pool, &workspace, request, embedder).await {
-        Ok(value) => Json(value).into_response(),
+        Ok(text) => ([(header::CONTENT_TYPE, "application/json")], text).into_response(),
         Err(e) => match e.downcast_ref::<Refusal>() {
             Some(r) => reply(
                 StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_REQUEST),
