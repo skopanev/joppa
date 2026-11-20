@@ -1,9 +1,6 @@
 //! Part of `objects_projection`: the writes of one projection column.
 use super::*;
 
-/// The rows of one write of a column: a large workspace writes its rows in parts.
-const PART: usize = 500;
-
 /// Store one value per object in `column`, and clear it on every other object of the
 /// workspace. Only rows whose value changes are written. The rows go in parts of PART, and one
 /// statement clears the objects outside the rows, so a part never clears another part.
@@ -32,7 +29,7 @@ pub(in crate::store) async fn store_rows(
     let sql = format!(
         "UPDATE joppa.objects o SET {column}=x.value FROM jsonb_to_recordset($2::text::jsonb) x(address text,value jsonb) WHERE o.workspace=$1 AND o.address=x.address AND o.{column} IS DISTINCT FROM x.value"
     );
-    for part in rows.chunks(PART) {
+    for part in rows.chunks(crate::store::stream::PART) {
         client
             .execute(&sql, &[&workspace, &json!(part).to_string()])
             .await?;

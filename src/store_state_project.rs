@@ -13,8 +13,9 @@ pub(crate) async fn project(
         .iter()
         .map(|((section, key), value)| json!({"section":section,"key":key,"value":value}))
         .collect();
-    if !changed.is_empty() {
-        client.execute("INSERT INTO joppa.state_entries(workspace,section,key,value,kind,compact) SELECT $1,x.section,x.key,COALESCE(x.value,'null'::jsonb),CASE WHEN x.section='objects' THEN x.value->>'kind' END,CASE WHEN x.section='objects' THEN jsonb_set(x.value,'{revisions,0,data}',(x.value->'revisions'->0->'data')-'body'-'description') END FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,value jsonb) ON CONFLICT(workspace,section,key) DO UPDATE SET value=EXCLUDED.value,kind=EXCLUDED.kind,compact=EXCLUDED.compact", &[&workspace,&json!(changed).to_string()]).await?;
+    for part in changed.chunks(crate::store::stream::PART) {
+        let body = json!(part).to_string();
+        client.execute("INSERT INTO joppa.state_entries(workspace,section,key,value,kind,compact) SELECT $1,x.section,x.key,COALESCE(x.value,'null'::jsonb),CASE WHEN x.section='objects' THEN x.value->>'kind' END,CASE WHEN x.section='objects' THEN jsonb_set(x.value,'{revisions,0,data}',(x.value->'revisions'->0->'data')-'body'-'description') END FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,value jsonb) ON CONFLICT(workspace,section,key) DO UPDATE SET value=EXCLUDED.value,kind=EXCLUDED.kind,compact=EXCLUDED.compact", &[&workspace, &body]).await?;
     }
     for (section, key) in &removed {
         client
@@ -52,8 +53,9 @@ pub(crate) async fn project(
     }
     // A stored schema revision is history: a reprojection never rewrites it, also when the
     // schema type no longer shows a removed field such as process_fields.
-    if !revisions.is_empty() {
-        client.execute("INSERT INTO joppa.state_revisions(workspace,section,key,revision,value) SELECT $1,x.section,x.key,x.revision,x.value FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,revision integer,value jsonb) ON CONFLICT(workspace,section,key,revision) DO UPDATE SET value=EXCLUDED.value WHERE state_revisions.value IS DISTINCT FROM EXCLUDED.value AND state_revisions.section<>'tree_schema'", &[&workspace,&json!(revisions).to_string()]).await?;
+    for part in revisions.chunks(crate::store::stream::PART) {
+        let body = json!(part).to_string();
+        client.execute("INSERT INTO joppa.state_revisions(workspace,section,key,revision,value) SELECT $1,x.section,x.key,x.revision,x.value FROM jsonb_to_recordset($2::text::jsonb) x(section text,key text,revision integer,value jsonb) ON CONFLICT(workspace,section,key,revision) DO UPDATE SET value=EXCLUDED.value WHERE state_revisions.value IS DISTINCT FROM EXCLUDED.value AND state_revisions.section<>'tree_schema'", &[&workspace, &body]).await?;
     }
     Ok(())
 }

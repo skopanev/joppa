@@ -166,10 +166,11 @@ pub async fn record_results(
         );
     };
     let id: i64 = row.get(0);
-    tx.execute(
-        "INSERT INTO joppa.test_results(report_id,address,status,duration_ms,message,status_name,fields) SELECT $1,x.address,x.status,x.duration_ms,x.message,x.status_name,x.fields FROM jsonb_to_recordset($2::text::jsonb) x(address text,status text,duration_ms bigint,message text,status_name text,fields jsonb)",
-        &[&id, &body],
-    ).await?;
+    let sql = "INSERT INTO joppa.test_results(report_id,address,status,duration_ms,message,status_name,fields) SELECT $1,x.address,x.status,x.duration_ms,x.message,x.status_name,x.fields FROM jsonb_to_recordset($2::text::jsonb) x(address text,status text,duration_ms bigint,message text,status_name text,fields jsonb)";
+    for part in results.chunks(super::stream::PART) {
+        let part = serde_json::to_string(part)?;
+        tx.execute(sql, &[&id, &part]).await?;
+    }
     let (position, kept) =
         super::record_report::record_report(&*tx, &workspace, actor, event(id, false)).await?;
     tx.commit().await?;

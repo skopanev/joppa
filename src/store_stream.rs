@@ -3,6 +3,9 @@
 use anyhow::Result;
 use tokio_postgres::{GenericClient, Row, types::ToSql};
 
+/// The rows of one statement of a bulk write: a large workspace writes its rows in parts.
+pub(crate) const PART: usize = 500;
+
 /// Give each row of `sql` to `each`, one row at a time.
 pub(crate) async fn each(
     client: &impl GenericClient,

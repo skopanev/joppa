@@ -47,8 +47,9 @@ pub(super) async fn project_selected(
             .iter()
             .map(|(key, value)| json!({"key":key,"value":value}))
             .collect();
-        if !rows.is_empty() {
-            client.execute("INSERT INTO joppa.state_entries(workspace,section,key,value) SELECT $1,'summaries',x.key,x.value FROM jsonb_to_recordset($2::text::jsonb) x(key text,value jsonb) ON CONFLICT(workspace,section,key) DO UPDATE SET value=EXCLUDED.value WHERE state_entries.value IS DISTINCT FROM EXCLUDED.value", &[&workspace,&json!(rows).to_string()]).await?;
+        for part in rows.chunks(super::stream::PART) {
+            let body = json!(part).to_string();
+            client.execute("INSERT INTO joppa.state_entries(workspace,section,key,value) SELECT $1,'summaries',x.key,x.value FROM jsonb_to_recordset($2::text::jsonb) x(key text,value jsonb) ON CONFLICT(workspace,section,key) DO UPDATE SET value=EXCLUDED.value WHERE state_entries.value IS DISTINCT FROM EXCLUDED.value", &[&workspace, &body]).await?;
         }
     }
     let object_types = crate::objects::schema(state).types;
