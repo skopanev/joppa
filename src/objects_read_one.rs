@@ -14,6 +14,7 @@ pub(super) async fn read_one(
     scope: &ObjectScope<'_>,
     key: &str,
 ) -> Result<Value> {
+    let asked = key;
     let key = conn
         .query_opt(
             "SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=$2",
@@ -29,7 +30,7 @@ pub(super) async fn read_one(
             && scope.related_to.is_none(),
         "address cannot be combined with list filters"
     );
-    let row=conn.query_opt(&format!("SELECT o.kind,o.local_id,o.revision,jsonb_set(o.document,'{{data}}',{data})::text,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", data = crate::computed_fields::DATA_SQL), &[&workspace,&key,&prefix]).await?.context("unknown object")?;
+    let row=conn.query_opt(&format!("SELECT o.kind,o.local_id,o.revision,jsonb_set(o.document,'{{data}}',{data})::text,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", data = crate::computed_fields::DATA_SQL), &[&workspace,&key,&prefix]).await?.with_context(|| format!("unknown object: {asked}"))?;
     let current: i32 = row.get(2);
     if scope.history {
         ensure!(

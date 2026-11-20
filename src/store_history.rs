@@ -10,6 +10,8 @@ pub use mark::mark_history;
 
 /// The largest History page.
 pub const HISTORY_LIMIT: i64 = 25;
+/// The largest page of History.
+pub const HISTORY_MAX_LIMIT: i64 = 100;
 
 /// A cursor holds the last position of the page that it continues.
 fn cursor_position(cursor: &str) -> Result<i64> {
@@ -22,11 +24,11 @@ fn cursor_position(cursor: &str) -> Result<i64> {
 fn page_limit(args: &Value) -> Result<i64> {
     match args.get("limit") {
         None | Some(Value::Null) => Ok(HISTORY_LIMIT),
-        // A larger limit is clamped to 25, never refused.
+        // A larger limit is clamped to HISTORY_MAX_LIMIT, never refused.
         Some(value) => value
             .as_i64()
             .filter(|n| *n >= 1)
-            .map(|n| n.min(HISTORY_LIMIT))
+            .map(|n| n.min(HISTORY_MAX_LIMIT))
             .ok_or_else(|| commands::ClientField("limit must be a whole number from 1").into()),
     }
 }

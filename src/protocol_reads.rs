@@ -53,7 +53,11 @@ pub(super) async fn with_addresses(
         {
             continue;
         }
-        let resolved = store::resolve_item_ids(pool, workspace, actor, &parts).await?;
+        // An unknown public item ID of an address read stays, so the read names it.
+        let resolved = match *key {
+            "address" => store::resolve_or_keep(pool, workspace, actor, &parts).await?,
+            _ => store::resolve_item_ids(pool, workspace, actor, &parts).await?,
+        };
         a[*key] = json!(resolved.join(","));
     }
     Ok(a)

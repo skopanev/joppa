@@ -1,12 +1,14 @@
 use super::{page_limit, parse_mark};
 use serde_json::json;
 
+// ac:mhuj6ldr
 #[test]
-fn a_history_page_holds_1_to_25_entries() {
+fn a_history_page_holds_25_entries_by_default_and_100_at_most() {
     assert_eq!(page_limit(&json!({})).unwrap(), 25);
     assert_eq!(page_limit(&json!({"limit": 1})).unwrap(), 1);
-    assert_eq!(page_limit(&json!({"limit": 25})).unwrap(), 25);
-    assert_eq!(page_limit(&json!({"limit": 26})).unwrap(), 25);
+    assert_eq!(page_limit(&json!({"limit": 26})).unwrap(), 26);
+    assert_eq!(page_limit(&json!({"limit": 100})).unwrap(), 100);
+    assert_eq!(page_limit(&json!({"limit": 101})).unwrap(), 100);
     for bad in [json!(0), json!("5")] {
         assert!(
             page_limit(&json!({"limit": bad}))

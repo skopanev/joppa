@@ -55,14 +55,33 @@ async fn authorized(
 }
 
 /// The address of each key: a key with `:` and `*` stay, any other key is a public item ID
-/// such as `joppa-R-DP6KXM62`.
+/// such as `joppa-R-DP6KXM62`. An unknown public item ID is refused.
 pub async fn resolve_item_ids(
     pool: &Pool,
     workspace: &str,
     actor: &str,
     keys: &[String],
 ) -> Result<Vec<String>> {
-    let address = |key: &String| key.is_empty() || key.contains(':') || key == "*";
+    let resolved = resolve_or_keep(pool, workspace, actor, keys).await?;
+    for (key, address) in keys.iter().zip(&resolved) {
+        ensure!(key != address || is_address(key), "unknown object");
+    }
+    Ok(resolved)
+}
+
+fn is_address(key: &str) -> bool {
+    key.is_empty() || key.contains(':') || key == "*"
+}
+
+/// `resolve_item_ids`, but an unknown public item ID stays as it is, so a read of many
+/// addresses names it in `missing`.
+pub async fn resolve_or_keep(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    keys: &[String],
+) -> Result<Vec<String>> {
+    let address = |key: &String| is_address(key);
     if keys.iter().all(address) {
         return Ok(keys.to_vec());
     }
@@ -84,7 +103,7 @@ pub async fn resolve_item_ids(
     for key in keys {
         out.push(match address(key) {
             true => key.clone(),
-            false => found.next().flatten().context("unknown object")?,
+            false => found.next().flatten().unwrap_or_else(|| key.clone()),
         });
     }
     Ok(out)
@@ -108,21 +127,20 @@ pub async fn item_workspace(pool: &Pool, actor: &str, ids: &[String]) -> Result<
     let rows = conn
         .query(
             "SELECT DISTINCT i.workspace FROM unnest($1::text[]) k(id)
-             LEFT JOIN joppa.item_ids i ON i.id=joppa.short_item_id(k.id)",
+             JOIN joppa.item_ids i ON i.id=joppa.short_item_id(k.id)",
             &[&ids],
         )
         .await?;
-    let found: Vec<Option<String>> = rows.iter().map(|r| r.get(0)).collect();
-    // An unknown ID reads as unknown, also beside known IDs.
-    let found: Vec<String> = found
-        .into_iter()
-        .collect::<Option<_>>()
-        .context("unknown object")?;
+    // An unknown ID beside known IDs stays for the read, which names it in missing. With no
+    // known ID the call names the first ID.
+    let found: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+    let first = ids.first().map_or("", String::as_str);
+    ensure!(!found.is_empty(), "unknown object: {first}");
     // An ID of a workspace that the caller cannot read reads as unknown.
     for workspace in &found {
         access::check(&**conn, workspace, actor, false)
             .await
-            .map_err(|_| anyhow::anyhow!("unknown object"))?;
+            .map_err(|_| anyhow::anyhow!("unknown object: {first}"))?;
     }
     ensure!(
         found.len() == 1,
