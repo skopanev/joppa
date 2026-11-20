@@ -28,10 +28,13 @@ pub(in crate::store) async fn project(
     let effective = dims::effective(state, &dimensions);
     let combinations = dims::combinations(&dimensions);
     let types = crate::objects::schema(state).types;
-    let rows = client
-        .query("SELECT address,kind,signal::text,process::text,parent,present FROM joppa.objects WHERE workspace=$1 AND present", &[&workspace])
-        .await?;
-    let items: Vec<Value> = rows.iter().map(base_row).collect();
+    let mut items: Vec<Value> = vec![];
+    let sql = "SELECT address,kind,signal::text,process::text,parent,present FROM joppa.objects WHERE workspace=$1 AND present";
+    crate::store::stream::each(client, sql, &[&workspace], |r| {
+        items.push(base_row(&r));
+        Ok(())
+    })
+    .await?;
     let present: Vec<&Value> = items.iter().collect();
     let all = graph(client, workspace, &present).await?;
     let tested: Vec<String> = all
@@ -121,12 +124,12 @@ pub(in crate::store) async fn read_tones(
 ) -> Result<()> {
     let addresses: Vec<&str> = items.iter().filter_map(|i| i["address"].as_str()).collect();
     let sql = "SELECT address,dim_tones->>$3 FROM joppa.objects WHERE workspace=$1 AND address=ANY($2) AND dim_tones ? $3";
-    let tones: BTreeMap<String, String> = client
-        .query(sql, &[&workspace, &addresses, &key])
-        .await?
-        .iter()
-        .map(|r| (r.get(0), r.get(1)))
-        .collect();
+    let mut tones: BTreeMap<String, String> = BTreeMap::new();
+    crate::store::stream::each(client, sql, &[&workspace, &addresses, &key], |r| {
+        tones.insert(r.get(0), r.get(1));
+        Ok(())
+    })
+    .await?;
     for item in items.iter_mut() {
         let tone = item["address"].as_str().and_then(|a| tones.get(a)).cloned();
         if let Some(tone) = tone {

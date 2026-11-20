@@ -4,6 +4,9 @@
 //! until the background catch-up (store_backfill.rs) rebuilds it.
 use super::*;
 use std::collections::BTreeMap;
+#[path = "objects_projection_store.rs"]
+mod store_columns;
+pub(super) use store_columns::{store_column, store_rows};
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
@@ -43,15 +46,13 @@ pub(in crate::store) async fn rebuild(
         .await?;
     // The helpers below read the statuses that were just stored. Each base row has the
     // fields that the helpers read, with the same values as a list row.
-    let mut items: Vec<Value> = client
-        .query(
-            "SELECT address,kind,signal::text,process::text,parent,present FROM joppa.objects WHERE workspace=$1",
-            &[&workspace],
-        )
-        .await?
-        .iter()
-        .map(base_row)
-        .collect();
+    let mut items: Vec<Value> = vec![];
+    let sql = "SELECT address,kind,signal::text,process::text,parent,present FROM joppa.objects WHERE workspace=$1";
+    crate::store::stream::each(client, sql, &[&workspace], |r| {
+        items.push(base_row(&r));
+        Ok(())
+    })
+    .await?;
     let base = items.clone();
     let counted = add_status_tones(client, workspace, &mut items, &types).await?;
     add_child_counts(&mut items, &counted, &types);
@@ -159,15 +160,14 @@ pub(in crate::store) async fn apply_rollups(
         .iter()
         .filter_map(|i| i["address"].as_str().map(String::from))
         .collect();
-    let patches: BTreeMap<String, Value> = client
-        .query(
-            "SELECT address,rollup::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",
-            &[&workspace, &addresses],
-        )
-        .await?
-        .iter()
-        .map(|r| Ok((r.get(0), stored(r.get(1))?)))
-        .collect::<Result<_>>()?;
+    let mut patches: BTreeMap<String, Value> = BTreeMap::new();
+    let sql =
+        "SELECT address,rollup::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)";
+    crate::store::stream::each(client, sql, &[&workspace, &addresses], |r| {
+        patches.insert(r.get(0), stored(r.get(1))?);
+        Ok(())
+    })
+    .await?;
     for item in items {
         if let Some(patch) = item["address"].as_str().and_then(|a| patches.get(a)) {
             apply_rollup(item, patch);
@@ -201,38 +201,14 @@ pub(in crate::store) async fn stored_statuses(
     workspace: &str,
     targets: &[String],
 ) -> Result<BTreeMap<String, Value>> {
-    client
-        .query(
-            "SELECT address,test_status::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)",
-            &[&workspace, &targets],
-        )
-        .await?
-        .iter()
-        .map(|r| Ok((r.get(0), stored(r.get(1))?)))
-        .collect()
-}
-
-/// Store one value per object in `column`, and clear it on every other object of the
-/// workspace. Only rows whose value changes are written.
-pub(super) async fn store_column(
-    client: &impl GenericClient,
-    workspace: &str,
-    column: &str,
-    rows: &[Value],
-) -> Result<()> {
-    client.execute(&format!("UPDATE joppa.objects o SET {column}=x.value FROM (SELECT p.address,v.value FROM joppa.objects p LEFT JOIN jsonb_to_recordset($2::text::jsonb) v(address text,value jsonb) ON v.address=p.address WHERE p.workspace=$1) x WHERE o.workspace=$1 AND o.address=x.address AND o.{column} IS DISTINCT FROM x.value"), &[&workspace, &json!(rows).to_string()]).await?;
-    Ok(())
-}
-
-/// Store one value for each listed object in `column`; every other row keeps its value.
-pub(super) async fn store_rows(
-    client: &impl GenericClient,
-    workspace: &str,
-    column: &str,
-    rows: &[Value],
-) -> Result<()> {
-    client.execute(&format!("UPDATE joppa.objects o SET {column}=x.value FROM jsonb_to_recordset($2::text::jsonb) x(address text,value jsonb) WHERE o.workspace=$1 AND o.address=x.address AND o.{column} IS DISTINCT FROM x.value"), &[&workspace, &json!(rows).to_string()]).await?;
-    Ok(())
+    let mut statuses = BTreeMap::new();
+    let sql = "SELECT address,test_status::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2)";
+    crate::store::stream::each(client, sql, &[&workspace, &targets], |r| {
+        statuses.insert(r.get(0), stored(r.get(1))?);
+        Ok(())
+    })
+    .await?;
+    Ok(statuses)
 }
 
 /// A stored value. A row that the status projection has not reached yet has none, and a

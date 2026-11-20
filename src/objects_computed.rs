@@ -88,14 +88,16 @@ async fn stored(
     }
     let addresses: Vec<&str> = outside.into_iter().collect();
     let sql = "SELECT address,computed::text FROM joppa.objects WHERE workspace=$1 AND address=ANY($2) AND computed IS NOT NULL";
-    for row in client.query(sql, &[&workspace, &addresses]).await? {
+    crate::store::stream::each(client, sql, &[&workspace, &addresses], |row| {
         let address: String = row.get(0);
         let values: Value = serde_json::from_str(row.get(1))?;
         for field in graph.fields(&address).into_iter().flat_map(|f| f.keys()) {
             let value = values.get(field).filter(|v| !v.is_null()).cloned();
             memo.insert((field.clone(), address.clone()), value);
         }
-    }
+        Ok(())
+    })
+    .await?;
     Ok(memo)
 }
 

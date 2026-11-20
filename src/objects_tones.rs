@@ -95,15 +95,13 @@ pub(super) async fn graph(
         .iter()
         .filter_map(|i| Some((i["address"].as_str()?.into(), i["kind"].as_str()?.into())))
         .collect();
-    let aliases: BTreeMap<String, String> = client
-        .query(
-            "SELECT address,target FROM joppa.object_aliases WHERE workspace=$1",
-            &[&workspace],
-        )
-        .await?
-        .iter()
-        .map(|r| (r.get(0), r.get(1)))
-        .collect();
+    let mut aliases: BTreeMap<String, String> = BTreeMap::new();
+    let sql = "SELECT address,target FROM joppa.object_aliases WHERE workspace=$1";
+    crate::store::stream::each(client, sql, &[&workspace], |r| {
+        aliases.insert(r.get(0), r.get(1));
+        Ok(())
+    })
+    .await?;
     let resolve = |a: &str| aliases.get(a).cloned().unwrap_or_else(|| a.to_owned());
     let mut children = BTreeMap::<String, Vec<String>>::new();
     for i in present {
@@ -112,18 +110,15 @@ pub(super) async fn graph(
         }
     }
     let mut linked = BTreeMap::<String, BTreeSet<String>>::new();
-    for r in client
-        .query(
-            "SELECT source,target FROM joppa.object_links WHERE workspace=$1 AND (relation IN ('depends_on','related') OR relation LIKE 'reference:%')",
-            &[&workspace],
-        )
-        .await?
-    {
+    let sql = "SELECT source,target FROM joppa.object_links WHERE workspace=$1 AND (relation IN ('depends_on','related') OR relation LIKE 'reference:%')";
+    crate::store::stream::each(client, sql, &[&workspace], |r| {
         let (source, target): (String, String) = (r.get(0), r.get(1));
         if kinds.contains_key(&source) {
             linked.entry(resolve(&target)).or_default().insert(source);
         }
-    }
+        Ok(())
+    })
+    .await?;
     Ok(Graph {
         kinds,
         children,

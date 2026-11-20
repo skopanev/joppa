@@ -35,6 +35,8 @@ mod reports_cache;
 mod reports_details;
 #[path = "store_reports_prune.rs"]
 mod reports_prune;
+#[path = "store_stream.rs"]
+pub(crate) mod stream;
 pub use record_results::record_results;
 pub use reports::test_status;
 #[path = "store_head.rs"]
