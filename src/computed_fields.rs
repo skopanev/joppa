@@ -55,6 +55,7 @@ pub fn computed(t: &TreeType) -> BTreeMap<String, FieldType> {
             values: vec![],
             from: Some(from),
             map: Default::default(),
+            reset_on_change: None,
         };
         Some((field.clone(), rule))
     });

@@ -65,6 +65,9 @@ pub(super) fn objects() -> Value {
             "in_relation": text("relation key: its nodes"),
             "count": {"type":"boolean","description":"true: only {total}"},
             "group_by": {"type":"array","description":"1 to 3 of kind, status, owner, assignee, <field>"},
+            "not_data": {"type":"object","description":"data it lacks"},
+            "has_tests": {"type":"boolean","description":"has test nodes"},
+            "comment_prefix": text("active comment ID prefix"),
         }),
         true,
     )

@@ -53,7 +53,12 @@ pub const HUMAN_MEMBER_RIGHTS: &str = "human_member_rights";
 /// a restore, takes the alias of that write. An older event keeps the copied alias in a replay.
 pub const OWN_ALIAS: &str = "own_alias";
 
-pub const REPLAY_RULES: [&str; 13] = [
+/// From this rule on, a save resets the criteria only for a change of the contract: a new
+/// owner, assignee, value of a typed field that does not reset, or source of equal title, body
+/// and live files resets nothing. An older save resets for any new data value in a replay.
+pub const CONTRACT_ONLY_RESET: &str = "contract_only_reset";
+
+pub const REPLAY_RULES: [&str; 14] = [
     RESET_CHANGED,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
@@ -67,6 +72,7 @@ pub const REPLAY_RULES: [&str; 13] = [
     RELATIONS_RESET,
     HUMAN_MEMBER_RIGHTS,
     OWN_ALIAS,
+    CONTRACT_ONLY_RESET,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

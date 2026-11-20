@@ -108,6 +108,10 @@ pub fn set_schema(
             !t.parent_decision || t.role == "task",
             "parent decisions apply to Task roles"
         );
+        ensure!(
+            t.reset_on_change.is_none() || t.role == "ac",
+            "reset_on_change of a type applies to the role ac"
+        );
         for (field, rule) in &t.references {
             commands::identifier(field)?;
             commands::nonempty(&rule.title)?;

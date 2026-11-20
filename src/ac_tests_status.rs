@@ -122,7 +122,8 @@ fn test_status(
     let same_commit: Vec<&Report> = reports
         .iter()
         .filter(|r| match rules.same_commit.as_str() {
-            "fail_wins" => r.commit == deciding.commit,
+            // A record without a commit is a commit of its own.
+            "fail_wins" if !deciding.commit.is_empty() => r.commit == deciding.commit,
             _ => r.id == deciding.id,
         })
         .collect();

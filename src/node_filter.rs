@@ -36,6 +36,12 @@ pub struct NodeFilter {
     pub assignee: Option<String>,
     /// The JSON text of the containment filter.
     pub data: Option<String>,
+    /// The JSON text of a data object that a kept node does not contain.
+    pub not_data: Option<String>,
+    /// True keeps the nodes with a present test node child, false the nodes without one.
+    pub has_tests: Option<bool>,
+    /// Keeps the nodes with a comment that is not withdrawn and whose ID starts with this text.
+    pub comment_prefix: Option<String>,
 }
 
 /// The names of the filters, in the order of the reply rules.
@@ -86,14 +92,24 @@ impl NodeFilter {
             Some(Value::String(s)) if s.is_empty() => Some(String::new()),
             _ => text("assignee")?,
         };
-        let data = match a.get("data") {
-            None | Some(Value::Null) => None,
-            Some(v @ Value::Object(_)) => Some(v.to_string()),
-            Some(Value::String(s)) if s.trim_start().starts_with('{') => {
-                let v: Value = serde_json::from_str(s).context("data filter must be an object")?;
-                Some(v.to_string())
+        let object = |name: &str| -> Result<Option<String>> {
+            match a.get(name) {
+                None | Some(Value::Null) => Ok(None),
+                Some(v @ Value::Object(_)) => Ok(Some(v.to_string())),
+                Some(Value::String(s)) if s.trim_start().starts_with('{') => {
+                    let v: Value = serde_json::from_str(s)
+                        .with_context(|| format!("{name} filter must be an object"))?;
+                    Ok(Some(v.to_string()))
+                }
+                Some(_) => bail!("{name} filter must be an object"),
             }
-            Some(_) => bail!("data filter must be an object"),
+        };
+        let data = object("data")?;
+        let has_tests = match a.get("has_tests") {
+            None | Some(Value::Null) => None,
+            Some(Value::Bool(flag)) => Some(*flag),
+            Some(Value::String(s)) if s == "true" || s == "false" => Some(s == "true"),
+            Some(_) => bail!("has_tests must be true or false"),
         };
         Ok(Self {
             parent,
@@ -103,6 +119,9 @@ impl NodeFilter {
             owner: text("owner")?,
             assignee,
             data,
+            not_data: object("not_data")?,
+            has_tests,
+            comment_prefix: text("comment_prefix")?,
         })
     }
 
@@ -127,7 +146,8 @@ impl NodeFilter {
                     Value::from(value.split(',').map(str::to_owned).collect::<Vec<_>>())
                 }
                 "depth" => Value::from(value.parse::<i64>().unwrap_or(0)),
-                "data" => serde_json::from_str(value).context("data filter must be an object")?,
+                "data" | "not_data" => serde_json::from_str(value)
+                    .with_context(|| format!("{name} filter must be an object"))?,
                 _ => Value::from(value),
             };
             map.insert((*name).to_owned(), value);
@@ -144,6 +164,13 @@ impl NodeFilter {
             || self.owner.is_some()
             || self.assignee.is_some()
             || self.data.is_some()
+            || self.keeps().is_some()
+    }
+
+    /// The filters that a separate read of the kept addresses applies, when one is set.
+    pub fn keeps(&self) -> Option<(&Option<String>, &Option<bool>, &Option<String>)> {
+        (self.not_data.is_some() || self.has_tests.is_some() || self.comment_prefix.is_some())
+            .then_some((&self.not_data, &self.has_tests, &self.comment_prefix))
     }
 
     /// True when `status` names the tone of archived nodes: a list read then also keeps the

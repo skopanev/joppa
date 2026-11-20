@@ -56,8 +56,10 @@ fn initialize_gives_the_read_and_write_rules_in_at_most_3500_bytes() {
     }
 }
 
-/// The budget of tools/list. The reply had 19603 bytes before stage 2 of the payload diet.
-const TOOLS_BUDGET: usize = 13500;
+/// The budget of tools/list. The reply had 19603 bytes before stage 2 of the payload diet. The
+/// filters not_data, has_tests and comment_prefix of joppa_objects and by_alias, op, kind and
+/// target of joppa_history added about 450 bytes.
+const TOOLS_BUDGET: usize = 13950;
 
 #[test]
 fn tools_list_stays_in_its_budget_and_each_property_has_a_short_description() {

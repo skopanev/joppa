@@ -64,13 +64,35 @@ pub async fn bind(
         (Some("*") | None, Some(_)) => Some(None),
         (Some(parent), _) => Some(Some(parent)),
     };
-    let descendants = match parent {
+    let descendants: Option<Vec<String>> = match parent {
         None => None,
         Some(parent) => {
             let rows = client
                 .query(SUBTREE, &[&workspace, &parent, &filter.depth, &archived])
                 .await?;
             Some(rows.iter().map(|row| row.get(0)).collect())
+        }
+    };
+    // not_data, has_tests and comment_prefix keep a set of addresses, as a parent does.
+    let descendants = match filter.keeps() {
+        None => descendants,
+        Some((not_data, has_tests, prefix)) => {
+            let kept: std::collections::BTreeSet<String> = client
+                .query(
+                    KEEPS.as_str(),
+                    &[&workspace, &archived, not_data, has_tests, prefix],
+                )
+                .await?
+                .iter()
+                .map(|row| row.get(0))
+                .collect();
+            Some(match descendants {
+                Some(below) => below
+                    .into_iter()
+                    .filter(|a: &String| kept.contains(a))
+                    .collect(),
+                None => kept.into_iter().collect(),
+            })
         }
     };
     let envelope::Data {
@@ -203,6 +225,14 @@ impl Bound {
 }
 
 static NONE: Option<String> = None;
+
+/// The addresses that not_data ($3), has_tests ($4) and comment_prefix ($5) keep.
+static KEEPS: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!("SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND (o.present OR $2)
+        AND ($3::text IS NULL OR NOT ({} @> $3::text::jsonb))
+        AND ($4::boolean IS NULL OR $4=EXISTS(SELECT 1 FROM joppa.objects t WHERE t.workspace=o.workspace AND t.parent=o.address AND t.present AND t.kind IN (SELECT k.key FROM joppa.board_cache b CROSS JOIN LATERAL jsonb_each(b.first_view->'object_types') k WHERE b.workspace=o.workspace AND k.value->>'role'='test')))
+        AND ($5::text IS NULL OR EXISTS(SELECT 1 FROM joppa.state_entries n CROSS JOIN LATERAL jsonb_each(n.value->'comments') c WHERE n.workspace=o.workspace AND n.section='notes' AND n.key=o.address AND left(c.key,length($5))=$5 AND NOT COALESCE((c.value->>'withdrawn')::boolean,false)))", crate::computed_fields::DATA_SQL)
+});
 
 /// The stored tone of a node, as each list item gives it.
 pub const TONE: &str = "COALESCE(o.rollup->'signal'->>'tone',o.signal->>'tone')";

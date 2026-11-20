@@ -55,6 +55,17 @@ pub struct ResultShape {
     /// It is optional, so KEYS does not name it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub match_field: Option<String>,
+    /// False lets a record name no commit: joppa_record_results stores an empty commit. It is
+    /// optional and true by default, so KEYS does not name it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_required: Option<bool>,
+}
+
+impl ResultShape {
+    /// A record names a commit, unless the block sets commit_required false.
+    pub fn commit_required(&self) -> bool {
+        self.commit_required != Some(false)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

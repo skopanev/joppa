@@ -31,9 +31,11 @@ pub const LIST_FIELDS: [&str; 18] = [
 
 /// The keys of a detail read that a list item does not give. `comments_count` and
 /// `files_count` are system fields: a data field of that name does not change them.
-pub const DETAIL_FIELDS: [&str; 13] = [
+pub const DETAIL_FIELDS: [&str; 15] = [
     "relations",
     "comments",
+    "comments_active",
+    "comments_latest",
     "comments_count",
     "files",
     "files_count",
@@ -49,8 +51,10 @@ pub const DETAIL_FIELDS: [&str; 13] = [
 
 /// The detail keys that a list read gives too: one batch read of the page loads them, only
 /// when the fields name them.
-pub const LIST_DETAIL_FIELDS: [&str; 5] = [
+pub const LIST_DETAIL_FIELDS: [&str; 7] = [
     "comments",
+    "comments_active",
+    "comments_latest",
     "comments_count",
     "files",
     "files_count",
@@ -84,7 +88,9 @@ pub fn card_needs(fields: Option<&[String]>) -> CardNeeds {
         match head(field) {
             "data" => needs.document = true,
             "relations" => (needs.document, needs.edges) = (true, true),
-            "comments" | "files" | "annotations" => needs.notes = true,
+            "comments" | "comments_active" | "comments_latest" | "files" | "annotations" => {
+                needs.notes = true
+            }
             "comments_count" | "files_count" => needs.counts = true,
             "relation_groups" => needs.groups = true,
             "references" => (needs.document, needs.references) = (true, true),

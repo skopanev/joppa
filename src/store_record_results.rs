@@ -20,6 +20,7 @@ type Refs = std::collections::BTreeMap<String, std::collections::BTreeSet<String
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Record {
+    #[serde(default)]
     commit: String,
     results: Vec<Outcome>,
 }
@@ -48,12 +49,14 @@ fn parse(args: &Value, shape: &ResultShape, refs: &Refs) -> Result<(String, Vec<
     }
     let record: Record = serde_json::from_value(input)
         .map_err(|e| anyhow::anyhow!("invalid record_results input: {e}"))?;
+    // A block with commit_required false takes a record without a commit.
+    let sha = (7..=64).contains(&record.commit.len())
+        && record
+            .commit
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase());
     ensure!(
-        (7..=64).contains(&record.commit.len())
-            && record
-                .commit
-                .chars()
-                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+        sha || (record.commit.is_empty() && !shape.commit_required()),
         "commit must be a lowercase git sha"
     );
     ensure!(

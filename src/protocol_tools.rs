@@ -47,7 +47,7 @@ pub(super) fn list() -> Vec<Value> {
         tool(
             "joppa_history",
             "Read the History of a workspace: one entry for each change, open until a member marks it processed.",
-            json!({"workspace":w(),"limit":{"type":"integer","minimum":1,"maximum":100,"description":"1 to 100, default 25"},"cursor":text(CURSOR),"order":{"type":"string","enum":["oldest","newest"],"description":"default oldest"},"after":{"type":"integer","minimum":0,"description":"only the entries after this position"},"open":{"type":"boolean","description":"only open entries; next_item names the oldest"}}),
+            json!({"workspace":w(),"limit":{"type":"integer","minimum":1,"maximum":100,"description":"1 to 100, default 25"},"cursor":text(CURSOR),"order":{"type":"string","enum":["oldest","newest"],"description":"default oldest"},"after":{"type":"integer","minimum":0,"description":"only the entries after this position"},"open":{"type":"boolean","description":"only open entries; next_item names the oldest"},"by_alias":text("agent alias"),"op":text("operation"),"kind":text("object type"),"target":text("object address")}),
             json!(["workspace"]),
         ),
         tool(

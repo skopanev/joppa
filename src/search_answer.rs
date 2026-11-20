@@ -77,6 +77,19 @@ pub(super) async fn answer(
                 .or_default() += 1.0 / (61.0 + rank as f64);
         }
     }
+    // An archived object ranks below a live one of the same score.
+    let mut archived = std::collections::BTreeSet::<(String, String)>::new();
+    if flags.all_versions && !scores.is_empty() {
+        let (spaces, addresses): (Vec<&str>, Vec<String>) = scores
+            .keys()
+            .map(|(w, kind, id, _)| (w.as_str(), format!("{kind}:{id}")))
+            .unzip();
+        let sql = "SELECT o.workspace,o.address FROM unnest($1::text[],$2::text[]) k(workspace,address) JOIN joppa.objects o ON o.workspace=k.workspace AND o.address=k.address WHERE NOT o.present";
+        for row in tx.query(sql, &[&spaces, &addresses]).await? {
+            archived.insert((row.get(0), row.get(1)));
+        }
+    }
+    let gone = |key: &Key| archived.contains(&(key.0.clone(), format!("{}:{}", key.1, key.2)));
     let mut ranked = scores.into_iter().collect::<Vec<_>>();
     // A copied item ID or an address names its object: the reply gives only the exact matches.
     if ranked
@@ -85,7 +98,11 @@ pub(super) async fn answer(
     {
         ranked.retain(|(key, _)| exact.get(key).is_some_and(|e| e.0));
     }
-    ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    ranked.sort_by(|a, b| {
+        (b.1.total_cmp(&a.1))
+            .then(gone(&a.0).cmp(&gone(&b.0)))
+            .then(a.0.cmp(&b.0))
+    });
     let ranked_total = ranked.len();
     let next_cursor = (flags.offset + (limit as usize) < ranked_total)
         .then(|| (flags.offset + limit as usize).to_string());
@@ -102,8 +119,9 @@ pub(super) async fn answer(
     let rows = tx.query("SELECT s.canonical_id,k.kind,k.id,COALESCE(d.title,r.title),(CASE WHEN k.rev>=0 THEN v.document->'data' ELSE o.document->'data' END)::text,d.req,CASE WHEN k.rev>=0 THEN k.rev ELSE o.revision END,i.id,k.score,k.exact,k.item,
         k.rev>=0 AND o.revision IS DISTINCT FROM k.rev,
         k.rev>=0 AND NOT EXISTS(SELECT 1 FROM joppa.search_documents x WHERE x.workspace=k.workspace AND x.kind=k.kind AND x.local_id=k.id),
-        CASE WHEN o.present THEN (COALESCE(o.signal,'{}'::jsonb)||COALESCE(o.rollup->'signal','{}'::jsonb))->>'tone' ELSE $2::text END
-      FROM jsonb_to_recordset($1::text::jsonb) AS k(workspace text,kind text,id text,rev int,score double precision,exact boolean,item boolean)
+        CASE WHEN o.present THEN (COALESCE(o.signal,'{}'::jsonb)||COALESCE(o.rollup->'signal','{}'::jsonb))->>'tone' ELSE $2::text END,
+        o.present IS NOT FALSE,k.n
+      FROM ROWS FROM (jsonb_to_recordset($1::text::jsonb) AS (workspace text,kind text,id text,rev int,score double precision,exact boolean,item boolean)) WITH ORDINALITY AS k(workspace,kind,id,rev,score,exact,item,n)
       JOIN joppa.search_state s ON s.workspace=k.workspace
       LEFT JOIN joppa.search_documents d ON k.rev<0 AND d.workspace=k.workspace AND d.kind=k.kind AND d.local_id=k.id
       LEFT JOIN joppa.search_revisions r ON k.rev>=0 AND r.workspace=k.workspace AND r.address=k.kind||':'||k.id AND r.revision=k.rev
@@ -111,7 +129,7 @@ pub(super) async fn answer(
       LEFT JOIN joppa.object_revisions v ON k.rev>=0 AND v.workspace=k.workspace AND v.address=k.kind||':'||k.id AND v.revision=k.rev
       LEFT JOIN joppa.object_aliases a ON a.workspace=k.workspace AND a.target=k.kind||':'||k.id
       JOIN joppa.item_ids i ON i.workspace=k.workspace AND i.kind=COALESCE(split_part(a.address,':',1),k.kind) AND i.local_id=COALESCE(split_part(a.address,':',2),k.id) AND i.namespace=s.reference_prefix
-      ORDER BY k.score DESC,k.workspace,k.kind,k.id,k.rev", &[&serde_json::to_string(&selected)?, &crate::status_colors::ARCHIVED_TONE]).await?;
+      ORDER BY k.n", &[&serde_json::to_string(&selected)?, &crate::status_colors::ARCHIVED_TONE]).await?;
     let length = if flags.lean { LEAN_EXCERPT } else { EXCERPT };
     let items = rows
         .iter()
@@ -130,6 +148,10 @@ pub(super) async fn answer(
                 "historical": row.get::<_, bool>(11),
                 "archived": row.get::<_, bool>(12),
             });
+            // An archived object is no present node.
+            if !row.get::<_, bool>(14) {
+                item["present"] = json!(false);
+            }
             // Only the MCP hit gives the status tone, for `fields` (ac:h0wbjo1a).
             if flags.lean {
                 item["status"] = json!(row.get::<_, Option<String>>(13));

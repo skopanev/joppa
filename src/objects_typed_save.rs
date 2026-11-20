@@ -1,5 +1,8 @@
 //! Part of `objects`: `typed_save` and the items after it, moved from objects.rs unchanged.
 use super::*;
+#[path = "objects_contract_view.rs"]
+mod contract_view;
+use contract_view::contract;
 
 /// Apply the typed command of a saved document, or keep the document as an override.
 #[allow(clippy::too_many_arguments)]
@@ -151,6 +154,8 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
                 .is_some_and(|t| t.role == crate::test_nodes::ROLE)
     };
     let relations = commands::epoch_reached(w, commands::RELATIONS_RESET, position);
+    // From the epoch of contract_only_reset, only a change of the contract of a document resets.
+    let contracts = commands::epoch_reached(w, commands::CONTRACT_ONLY_RESET, position);
     let content = |links: &[ObjectLink]| -> Vec<ObjectLink> {
         links
             .iter()
@@ -190,10 +195,18 @@ pub fn reset_changed(w: &mut Workspace, command: &Command, position: u64, at: &s
                 .find(|r| r.position < position)
                 .is_some_and(|before| {
                     let quiet = quiet(&o.kind);
-                    let (data, old) = (
+                    let (mut data, mut old) = (
                         untitled(&current.data, quiet),
                         untitled(&before.data, quiet),
                     );
+                    if contracts {
+                        data = std::borrow::Cow::Owned(
+                            contract(w, &types, &o.kind, &data).into_owned(),
+                        );
+                        old = std::borrow::Cow::Owned(
+                            contract(w, &types, &o.kind, &old).into_owned(),
+                        );
+                    }
                     let (links, related) = edges(before, current);
                     // From the epoch on, any new parent, edge or data value resets. A revision
                     // that changes none of them, such as a specification revision, does not.

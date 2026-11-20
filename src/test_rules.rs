@@ -51,6 +51,7 @@ pub fn legacy() -> ResultShape {
         red_if_any: vec!["fail".into()],
         failure_field: Some("message".into()),
         match_field: None,
+        commit_required: None,
     }
 }
 

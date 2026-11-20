@@ -78,7 +78,11 @@ impl<'a> Prune<'a> {
             return false;
         }
         let key = (r.order, r.received_us);
-        let top = self.commits[r.commit.as_str()];
+        // A record without a commit is a commit of its own.
+        let top = match r.commit.is_empty() {
+            true => key,
+            false => self.commits[r.commit.as_str()],
+        };
         // A name that no list names here keeps its rows: the status decides without this pass.
         let Some(boundaries) = self.boundaries.get(address) else {
             return true;

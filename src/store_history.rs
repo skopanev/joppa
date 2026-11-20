@@ -40,6 +40,23 @@ struct Scope {
     newest: bool,
     after: i64,
     cursor: Option<i64>,
+    /// The entries of one alias, operation, object type or object only.
+    alias: Option<String>,
+    op: Option<String>,
+    kind: Option<String>,
+    target: Option<String>,
+}
+
+/// The object of an event: the saved node of save_object, else the target. An old alias reads
+/// as its node.
+const TARGET: &str = "COALESCE((SELECT a.target FROM joppa.object_aliases a WHERE a.workspace=e.workspace AND a.address=COALESCE(CASE WHEN e.command->>'op'='save_object' THEN (e.command->>'kind')||':'||(e.command->>'id') END,e.command->>'target')),CASE WHEN e.command->>'op'='save_object' THEN (e.command->>'kind')||':'||(e.command->>'id') END,e.command->>'target')";
+
+/// The conditions of the entry filters, on the parameters `$first` to `$first+3`.
+fn filters(first: usize) -> String {
+    let [a, o, k, t] = [first, first + 1, first + 2, first + 3].map(|n| format!("${n}"));
+    format!(
+        "({a}::text IS NULL OR e.alias={a}) AND ({o}::text IS NULL OR e.command->>'op'={o}) AND ({k}::text IS NULL OR split_part({TARGET},':',1)={k}) AND ({t}::text IS NULL OR {TARGET}=COALESCE((SELECT x.target FROM joppa.object_aliases x WHERE x.workspace=e.workspace AND x.address={t}),{t}))"
+    )
 }
 
 fn scope(args: &Value) -> Result<Scope> {
@@ -66,12 +83,23 @@ fn scope(args: &Value) -> Result<Scope> {
         .and_then(Value::as_str)
         .map(cursor_position)
         .transpose()?;
+    let text = |name: &str| match args.get(name) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) if !s.is_empty() => Ok(Some(s.clone())),
+        Some(_) => Err(commands::ClientField(
+            "a History filter is a non-empty text",
+        )),
+    };
     Ok(Scope {
         limit: page_limit(args)?,
         open,
         newest,
         after,
         cursor,
+        alias: text("by_alias")?,
+        op: text("op")?,
+        kind: text("kind")?,
+        target: text("target")?,
     })
 }
 
@@ -123,8 +151,8 @@ async fn read(
     };
     let order = if s.newest { "DESC" } else { "ASC" };
     let rows = conn.query(
-        &format!("SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text, e.alias, m.alias AS mark_alias FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND e.position<=$3 AND (NOT $4 OR m.position IS NULL) ORDER BY e.position {order} LIMIT $5"),
-        &[&id, &low, &high, &s.open, &(s.limit + 1)],
+        &format!("SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text, e.alias, m.alias AS mark_alias FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND e.position<=$3 AND (NOT $4 OR m.position IS NULL) AND {} ORDER BY e.position {order} LIMIT $5", filters(6)),
+        &[&id, &low, &high, &s.open, &(s.limit + 1), &s.alias, &s.op, &s.kind, &s.target],
     ).await?;
     let next_item: Option<i64> = conn.query_one(
         "SELECT min(e.position) FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS (SELECT 1 FROM joppa.history_marks m WHERE m.workspace=e.workspace AND m.position=e.position)",
@@ -132,8 +160,8 @@ async fn read(
     ).await?.get(0);
     // `total` counts every entry of the read after `after`, also the entries before the cursor.
     let total: i64 = conn.query_one(
-        "SELECT count(*) FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND (NOT $3 OR m.position IS NULL)",
-        &[&id, &s.after, &s.open],
+        &format!("SELECT count(*) FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND (NOT $3 OR m.position IS NULL) AND {}", filters(4)),
+        &[&id, &s.after, &s.open, &s.alias, &s.op, &s.kind, &s.target],
     ).await?.get(0);
     let more = rows.len() as i64 > s.limit;
     let rows = &rows[..rows.len().min(s.limit as usize)];

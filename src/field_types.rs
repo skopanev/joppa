@@ -29,6 +29,10 @@ pub struct FieldType {
     /// gives no value.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub map: BTreeMap<String, String>,
+    /// Whether a new value resets the criteria at and below the node. Without it, a field of a
+    /// type with the role test resets and a field of any other type does not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_on_change: Option<bool>,
     /// True shows the field on the web card of an object. The MCP tree does not give it.
     #[serde(
         default,
@@ -54,6 +58,12 @@ fn board_flag<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<boo
 pub const SOURCES: [&str; 5] = ["own", "status", "children", "links", "parent"];
 
 impl FieldType {
+    /// Whether a new value of the field resets, for a type with `role`.
+    pub fn resets(&self, role: &str) -> bool {
+        self.reset_on_change
+            .unwrap_or(role == crate::test_nodes::ROLE)
+    }
+
     /// The source of the value: own when the rule names none.
     pub fn source(&self) -> &str {
         self.from.as_deref().unwrap_or("own")

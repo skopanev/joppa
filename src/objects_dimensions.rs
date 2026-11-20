@@ -43,8 +43,7 @@ pub(in crate::store) async fn project(
         .filter(|(_, k)| crate::manual_checks::reads_status(types.get(*k)))
         .map(|(a, _)| a.clone())
         .collect();
-    let criteria = super::reports::criteria_of(state, &tested);
-    let rules = crate::test_rules::rules(state)?;
+    let (criteria, rules) = super::reports::criteria_and_rules(state, &tested)?;
     let keys: Vec<String> = dimensions.iter().map(|d| d.field.clone()).collect();
     let (reports, results) =
         super::reports::results_of(client, workspace, &criteria, &keys, rules.reset_on_change)

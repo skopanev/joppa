@@ -40,36 +40,14 @@ pub(super) async fn state_criterion_statuses(
     if targets.is_empty() {
         return Ok(Default::default());
     }
-    let criteria = criteria_of(state, targets);
-    let rules = crate::test_rules::rules(state)?;
+    let (criteria, rules) = criteria_and_rules(state, targets)?;
     let checks = crate::manual_checks::Checks::of(state, targets);
     statuses_for_criteria(client, workspace, criteria, &rules, &checks).await
 }
 
-/// The test list and the boundary of each target that has an object.
-pub(super) fn criteria_of(
-    state: &crate::model::Workspace,
-    targets: &[String],
-) -> Vec<(String, Option<Listed>, Boundary)> {
-    // The test names of each parent come from one pass over the test nodes.
-    let parents: std::collections::BTreeSet<&str> = targets.iter().map(String::as_str).collect();
-    let names = state
-        .test_nodes_migrated
-        .then(|| crate::test_nodes::nodes_below(state, Some(&parents)));
-    targets
-        .iter()
-        .filter_map(|target| {
-            state.objects.get(target)?;
-            let boundary =
-                Boundary::read(state.criterion_boundaries.get(target).map(String::as_str));
-            let tests = match &names {
-                Some(names) => crate::ac_tests::listed_node(state, target, names),
-                None => listed(state, target),
-            };
-            Some((target.clone(), tests, boundary))
-        })
-        .collect()
-}
+#[path = "store_reports_criteria.rs"]
+mod criteria;
+pub(in crate::store) use criteria::criteria_and_rules;
 
 async fn statuses_for_criteria(
     client: &impl GenericClient,

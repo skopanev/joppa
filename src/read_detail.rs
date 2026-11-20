@@ -12,7 +12,17 @@ use links::{detail_relations, drop_copies, drop_empty_remote, drop_same, flatten
 pub use links::{headers, revision};
 
 /// The keys that a detail read gives only on request with `fields`.
-const ON_REQUEST: [&str; 4] = ["comments", "files", "references", "child_counts"];
+const ON_REQUEST: [&str; 6] = [
+    "comments",
+    "comments_active",
+    "comments_latest",
+    "files",
+    "references",
+    "child_counts",
+];
+
+/// The most comments of `comments_latest`.
+const LATEST: usize = 5;
 
 /// The comments of an annotation map as a list in time order, without duplicate keys and
 /// without `withdrawn: false`.
@@ -84,6 +94,20 @@ pub fn detail_keys(mut reply: Value, asked: &str, comments_cursor: Option<&str>)
     }
     // The relations as a write sends them back.
     detail_relations(&mut reply);
+    // The comments that are not withdrawn: one page of them, and the newest LATEST of them in
+    // time order. An object without such comments has neither key.
+    let active: Vec<Value> = comments
+        .iter()
+        .filter(|c| c["withdrawn"] != true)
+        .cloned()
+        .collect();
+    let latest = active[active.len().saturating_sub(LATEST)..].to_vec();
+    reply["comments_latest"] = json!(latest);
+    reply["comments_active"] = if active.is_empty() {
+        Value::Null
+    } else {
+        page(active, comments_cursor)?
+    };
     // An object without comments has no comments key.
     reply["comments"] = if comments.is_empty() {
         Value::Null
@@ -132,13 +156,26 @@ pub fn detail(reply: Value, asked: &str, comments_cursor: Option<&str>) -> Resul
 /// The detail keys of one list item when `fields` names `LIST_DETAIL_FIELDS`.
 pub fn list_detail(item: &Value) -> Value {
     let comments = comment_list(&item["annotations"]["comments"]);
+    let active: Vec<Value> = comments
+        .iter()
+        .filter(|c| c["withdrawn"] != true)
+        .cloned()
+        .collect();
+    let latest = active[active.len().saturating_sub(LATEST)..].to_vec();
     let comments = if comments.is_empty() {
         Value::Null
     } else {
         page(comments, None).unwrap_or(Value::Null)
     };
+    let comments_active = if active.is_empty() {
+        Value::Null
+    } else {
+        page(active, None).unwrap_or(Value::Null)
+    };
     let mut out = json!({
         "comments": comments,
+        "comments_active": comments_active,
+        "comments_latest": latest,
         "comments_count": item["comments_count"],
         "files": item["files"],
         "files_count": item["files_count"],

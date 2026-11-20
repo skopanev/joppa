@@ -28,6 +28,10 @@ pub struct TreeType {
     /// names it or links with it (source_reset.rs). A false value is not stored.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub source: bool,
+    /// Of a type with the role ac: whether a change above a criterion of this type makes its
+    /// earlier records stop counting. It overrides `reset_on_change` of test_results.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_on_change: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
