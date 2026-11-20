@@ -1,6 +1,8 @@
 //! A typed enum field takes its value from the children, the links or the parent of a node
 //! over a real server: each write recomputes the reached values, a read and the data filter
 //! give them, and a save refuses a sent value of a computed field.
+#[path = "common/manual_check.rs"]
+mod manual_check;
 #[path = "common/record_world.rs"]
 mod record_world;
 use anyhow::{Result, ensure};
@@ -88,7 +90,7 @@ async fn a_computed_stage_follows_the_children_the_links_and_the_parent() -> Res
     for (put, error) in [
         (
             json!({"bug":node("Bugs", &[], "sideways")}),
-            "stage: from is own, children, links or parent",
+            "stage: from is own, status, children, links or parent",
         ),
         (
             json!({"bug":{"title":"Bugs","role":"document","status":"none","root":true,"parents":[],
@@ -219,5 +221,198 @@ async fn a_computed_stage_follows_the_children_the_links_and_the_parent() -> Res
         ),
     )
     .await?;
+    Ok(())
+}
+
+// ac:2n1hmhfi
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
+async fn a_computed_stage_from_status_follows_tones_without_resetting_tests() -> Result<()> {
+    let w = record_world::world(&["t1", "t2"]).await?;
+    let stages = ["to_decide", "to_prepare", "in_progress", "done"];
+    let map = json!({"green":"done","blue":"in_progress","red":"to_decide","orange":"to_prepare"});
+
+    // Check schema refusals for invalid status maps and map on non-status source.
+    for (bad_field, expected) in [
+        (
+            json!({"type":"enum","values":stages,"from":"status"}),
+            "from status takes an enum field with a map of tones",
+        ),
+        (
+            json!({"type":"enum","values":stages,"from":"status","map":{"purple":"done"}}),
+            "a map key is a tone: red, orange, yellow, blue or green",
+        ),
+        (
+            json!({"type":"enum","values":stages,"from":"status","map":{"green":"later"}}),
+            "the map value later is not one of the values",
+        ),
+        (
+            json!({"type":"enum","values":stages,"from":"children","map":{"green":"done"}}),
+            "only from status takes a map",
+        ),
+    ] {
+        let tree = w
+            .mcp(&w.owner, "joppa_tree", json!({}))
+            .await?
+            .map_err(anyhow::Error::msg)?;
+        let mut ac = tree["schema"]["types"]["ac"].clone();
+        ac["fields"] = json!({"stage": bad_field});
+        let reply = w
+            .command(
+                &w.owner,
+                json!({"op":"set_tree_schema","revision":tree["schema"]["revision"],"put_types":{"ac":ac},"reason":"Bad status map"}),
+            )
+            .await?;
+        ensure!(
+            reply.as_ref().is_err_and(|e| e.contains(expected)),
+            "expected {expected}, got {reply:?}"
+        );
+    }
+
+    // Configure ac from status, requirement from children, and bug from links.
+    let tree = w
+        .mcp(&w.owner, "joppa_tree", json!({}))
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    let mut ac = tree["schema"]["types"]["ac"].clone();
+    ac["fields"] = json!({"stage":{"type":"enum","values":stages,"from":"status","map":map}});
+    let mut req = tree["schema"]["types"]["requirement"].clone();
+    req["fields"] = json!({"stage":{"type":"enum","values":stages,"from":"children"}});
+    let bug = json!({
+        "title":"Bugs","role":"document","status":"none","root":true,"parents":[],
+        "fields":{"stage":{"type":"enum","values":stages,"from":"links"}}
+    });
+    w.command(
+        &w.owner,
+        json!({
+            "op":"set_tree_schema",
+            "revision":tree["schema"]["revision"],
+            "put_types":{"ac":ac,"requirement":req,"bug":bug},
+            "filters":["stage"],
+            "reason":"Compute stage from status"
+        }),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+
+    // Add criterion B without tests (orange -> to_prepare) and bug:b1 linked to ac:a.
+    save(&w, "ac:b", 0, json!({"parent":"requirement:r"}))
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    save(
+        &w,
+        "bug:b1",
+        0,
+        json!({"relations":{"related":{"edges":[{"to":"ac:a"}]}}}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+
+    // Initially ac:a is blue (in_progress), ac:b is orange (to_prepare), and R takes to_prepare.
+    expect(
+        &w,
+        &[
+            ("ac:a", json!("in_progress")),
+            ("bug:b1", json!("in_progress")),
+            ("ac:b", json!("to_prepare")),
+            ("requirement:r", json!("to_prepare")),
+        ],
+        ("in_progress", &["ac:a", "bug:b1"]),
+    )
+    .await?;
+
+    let record = async |commit_n: u32, results: Value| -> Result<()> {
+        w.mcp(
+            &w.bot,
+            "joppa_record_results",
+            json!({"commit":format!("{commit_n:040x}"),"results":results}),
+        )
+        .await?
+        .map_err(anyhow::Error::msg)?;
+        Ok(())
+    };
+
+    // Pass both tests of ac:a -> ac:a and bug:b1 become done without resetting any test.
+    record(
+        1,
+        json!([{"test":"t1","status":"pass"},{"test":"t2","status":"pass"}]),
+    )
+    .await?;
+    expect(
+        &w,
+        &[
+            ("ac:a", json!("done")),
+            ("bug:b1", json!("done")),
+            ("ac:b", json!("to_prepare")),
+            ("requirement:r", json!("to_prepare")),
+        ],
+        ("done", &["ac:a", "bug:b1"]),
+    )
+    .await?;
+
+    // Fail t1 only -> ac:a becomes red (to_decide), R becomes to_decide, and t2 keeps its earlier pass without reset.
+    record(2, json!([{"test":"t1","status":"fail"}])).await?;
+    expect(
+        &w,
+        &[
+            ("ac:a", json!("to_decide")),
+            ("bug:b1", json!("to_decide")),
+            ("ac:b", json!("to_prepare")),
+            ("requirement:r", json!("to_decide")),
+        ],
+        ("to_decide", &["ac:a", "bug:b1", "requirement:r"]),
+    )
+    .await?;
+    let a_obj = w.object("ac:a").await?;
+    ensure!(
+        a_obj["status"]["tone"] == json!("red"),
+        "expected red tone on ac:a: {a_obj}"
+    );
+
+    // Pass t1 alone on commit 3 -> because t2 was never reset, ac:a turns green (done) immediately.
+    record(3, json!([{"test":"t1","status":"pass"}])).await?;
+    expect(
+        &w,
+        &[
+            ("ac:a", json!("done")),
+            ("bug:b1", json!("done")),
+            ("ac:b", json!("to_prepare")),
+            ("requirement:r", json!("to_prepare")),
+        ],
+        ("done", &["ac:a", "bug:b1"]),
+    )
+    .await?;
+
+    // Manual save of stage on ac:a is refused.
+    let cur_rev = w.object("ac:a").await?["revision"].as_u64().unwrap_or(1);
+    let refused = save(&w, "ac:a", cur_rev, json!({"stage":"to_decide"})).await?;
+    ensure!(
+        refused
+            .as_ref()
+            .is_err_and(|e| e.contains("stage is computed from status and cannot be set on ac")),
+        "expected computed refusal, got {refused:?}"
+    );
+
+    // Also verify manual check expiry updates status-computed stage without a journal save.
+    save(&w, "ac:m", 0, json!({"parent":"requirement:r"}))
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    let d = chrono::Utc::now().date_naive() + chrono::TimeDelta::days(2);
+    manual_check::check(
+        &w,
+        "ac:m",
+        json!({"check_result":"pass","valid_until":d.format("%Y-%m-%d").to_string()}),
+    )
+    .await?;
+    ensure!(
+        stage_of(&w, "ac:m").await? == json!("done"),
+        "manual pass must set ac:m stage to done"
+    );
+    let expired = joppa::store::expire_manual_checks(&w.pool, &w.ws, d).await?;
+    ensure!(expired == 1, "expected 1 expired check, got {expired}");
+    ensure!(
+        stage_of(&w, "ac:m").await? == json!("in_progress"),
+        "expired manual check must turn ac:m blue -> in_progress"
+    );
     Ok(())
 }
