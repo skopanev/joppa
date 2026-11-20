@@ -55,11 +55,11 @@ async fn an_agent_follows_the_cursor_over_250_changes_and_gets_each_one_once_in_
         "a gap or a duplicate: {positions:?}"
     );
     ensure!(positions == journal, "{positions:?} / {journal:?}");
-    // MCP follows the same cursor: a limit of 100 is clamped to 25. Each page
+    // MCP follows the same cursor: a limit of 200 is clamped to 100. Each page
     // gives the total of the entries after `after`.
     let mut walked = vec![];
-    let mut arguments = json!({"workspace":w.ws,"after":p,"limit":100});
-    let pages = journal.len().div_ceil(25);
+    let mut arguments = json!({"workspace":w.ws,"after":p,"limit":200});
+    let pages = journal.len().div_ceil(100);
     for page in 1.. {
         ensure!(page <= pages + 1, "the MCP cursor does not end");
         let reply = w
@@ -74,7 +74,7 @@ async fn an_agent_follows_the_cursor_over_250_changes_and_gets_each_one_once_in_
                 .map(|i| i["position"].as_i64().unwrap()),
         );
         if reply["next_cursor"].is_null() {
-            ensure!(page == pages, "{page} MCP pages of 25");
+            ensure!(page == pages, "{page} MCP pages of 100");
             break;
         }
         arguments["cursor"] = reply["next_cursor"].clone();

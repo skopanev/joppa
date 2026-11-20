@@ -76,17 +76,18 @@ async fn history_pages_hold_25_entries_with_time_status_and_marks() -> Result<()
     )
     .await?;
 
-    // The default is a page of 25 with the total of the view. A limit of 26 is clamped to
-    // 25; a limit of 0 is refused.
+    // The default is a page of 25 with the total of the view. A limit of 101 is clamped to
+    // 100, and a limit of 0 is refused.
     let default = page(&pool, &ws, json!({})).await?;
+    let total = default["total"].as_u64().unwrap_or(0) as usize;
     ensure!(
-        default["items"].as_array().map(Vec::len) == Some(25)
-            && default["total"].as_u64() >= Some(31),
+        default["items"].as_array().map(Vec::len) == Some(25) && total >= 31,
         "{default}"
     );
-    let clamped = page(&pool, &ws, json!({"limit": 26})).await?;
+    let clamped = page(&pool, &ws, json!({"limit": 101})).await?;
     ensure!(
-        clamped["items"].as_array().map(Vec::len) == Some(25) && clamped["limit"] == 25,
+        clamped["items"].as_array().map(Vec::len) == Some(total.min(100))
+            && clamped["limit"] == 100,
         "{clamped}"
     );
     let refused = page(&pool, &ws, json!({"limit": 0})).await.unwrap_err();

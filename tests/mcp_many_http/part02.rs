@@ -113,7 +113,10 @@ async fn fields_name_the_keys_of_an_object_read_by_its_address() -> Result<()> {
     let nope = ok(&w, json!({"address":"ac:a","fields":["nope"]})).await?;
     ensure!(nope == json!({"nope":null}), "{nope}");
     for (args, error) in [
-        (json!({"fields":["comments"]}), "unknown field comments"),
+        (
+            json!({"fields":["relation_groups"]}),
+            "unknown field relation_groups",
+        ),
         (
             json!({"address":"ac:a","fields":["description"]}),
             "use body instead of description; read joppa_help",

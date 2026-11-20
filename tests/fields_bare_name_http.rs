@@ -64,8 +64,8 @@ async fn a_bare_fields_name_reads_the_data_field_of_that_name() -> Result<()> {
     );
     for (args, error) in [
         (
-            json!({"parent":"requirement:r","fields":["comments"]}),
-            "unknown field comments",
+            json!({"parent":"requirement:r","fields":["relation_groups"]}),
+            "unknown field relation_groups",
         ),
         (
             json!({"address":"ac:a","fields":["description"]}),

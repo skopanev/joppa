@@ -67,10 +67,15 @@ async fn one_read_gives_up_to_25_objects_with_their_addresses() -> Result<()> {
                 named(&s, "requirement:s")]}),
         "{other}"
     );
-    let above = ["requirement:r"; 26].join(",");
+    let partial = ok(&w, json!({"address":"ac:a,nope:x"})).await?;
+    ensure!(
+        partial == json!({"items": [named(&a, "ac:a")], "missing": ["nope:x"]}),
+        "{partial}"
+    );
+    let above = ["requirement:r"; 101].join(",");
     let one_address = "history, revision and comments_cursor read one address";
     let refused = [
-        (json!({"address":above}), "at most 25 addresses in one call"),
+        (json!({"address":above}), "at most 100 addresses in one call"),
         (
             json!({"address":"ac:a,"}),
             "empty address in the address list",
@@ -87,17 +92,17 @@ async fn one_read_gives_up_to_25_objects_with_their_addresses() -> Result<()> {
             json!({"address":"ac:a,requirement:r","comments_cursor":"25"}),
             one_address,
         ),
-        (json!({"address":"ac:a,nope:x"}), "unknown object"),
+        (json!({"address":"nope:x"}), "unknown object: nope:x"),
     ];
     for (args, error) in refused {
         let reply = read(&w, args.clone()).await?;
         ensure!(reply == Err(error.into()), "{args}: {reply:?}");
     }
-    let page = ["requirement:s"; 25].join(",");
+    let page = ["requirement:s"; 100].join(",");
     let page = ok(&w, json!({"address":page})).await?;
     ensure!(
-        page["items"].as_array().map(Vec::len) == Some(25)
-            && page["items"][24] == named(&s, "requirement:s"),
+        page["items"].as_array().map(Vec::len) == Some(100)
+            && page["items"][99] == named(&s, "requirement:s"),
         "{page}"
     );
     Ok(())

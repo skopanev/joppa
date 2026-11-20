@@ -71,11 +71,10 @@ pub fn redact(
             mask_entry(intake, fragment)?;
         }
     }
-    let annotation = crate::objects::annotation_address(w, &key);
-    if let Some(notes) = w.notes.get_mut(&annotation)
-        && holds(&**notes, encoded)?
-    {
-        mask_entry(std::sync::Arc::make_mut(notes), fragment)?;
+    for notes in w.notes.values_mut() {
+        if holds(&**notes, encoded)? {
+            mask_entry(std::sync::Arc::make_mut(notes), fragment)?;
+        }
     }
     w.redactions.entry(key).or_default().push(Redaction {
         actor: actor.into(),

@@ -70,15 +70,18 @@ async fn joppa_objects_takes_a_limit_up_to_100_with_fields() -> Result<()> {
             && text.contains("fields"),
         "joppa_objects: {objects}"
     );
-    // joppa_timeline is removed, so tools/list may not name it.
-    for name in ["joppa_search", "joppa_timeline", "joppa_history"] {
-        let limit = limit(name);
-        ensure!(
-            (name == "joppa_timeline" && limit.is_null())
-                || (limit["minimum"] == 1 && limit["maximum"] == 25),
-            "{name}: {limit}"
-        );
-    }
+    // joppa_timeline is removed, so tools/list may not name it. joppa_history takes up to 100.
+    ensure!(limit("joppa_timeline").is_null(), "joppa_timeline");
+    let search = limit("joppa_search");
+    ensure!(
+        search["minimum"] == 1 && search["maximum"] == 25,
+        "joppa_search: {search}"
+    );
+    let history = limit("joppa_history");
+    ensure!(
+        history["minimum"] == 1 && history["maximum"] == 100,
+        "joppa_history: {history}"
+    );
     // Without fields a page has 25 items. With fields it has 100, also for limit 101.
     let plain = read(&w, json!({"parent":"requirement:r","limit":100})).await?;
     let named = json!({"parent":"requirement:r","limit":100,"fields":["title"]});

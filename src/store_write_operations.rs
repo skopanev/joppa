@@ -172,6 +172,8 @@ pub(crate) async fn write(
         .iter()
         .any(|e| matches!(e.command, Command::RedactObject { .. }))
     {
+        tx.execute("SELECT set_config('joppa.redacting','1',true)", &[])
+            .await?;
         super::search_pending::add(&*tx, &workspace, None, position).await?;
     }
     super::search_pending::add(&*tx, &workspace, selected.as_ref(), position).await?;
