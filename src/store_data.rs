@@ -57,63 +57,105 @@ pub async fn read_data(
     let tree = Tree::new(&w, &schema.types, nodes);
     let walked = tree.walk(root.as_deref(), &plan.filter, plan.kinds.as_ref());
     drop(tree);
-    let selected = match &plan.query {
-        None => walked
-            .into_iter()
-            .take(plan.limit.unwrap_or(usize::MAX))
-            .collect(),
-        Some(_) if walked.is_empty() => vec![],
-        Some(query) => {
-            let limit = plan.limit.unwrap_or_default() as i64;
-            search_query::find_within(pool, workspace, query, &walked, limit, embedder).await?
-        }
-    };
     // The keys of the reply object in serde order: items, position, workspace.
     let tail = format!(
         "],\"position\":{position},\"workspace\":{}}}",
         serde_json::to_string(&public)?
     );
-    let mut text = String::from("{\"items\":[");
-    let mut length = text.chars().count() + tail.chars().count();
-    let mut first = true;
-    let data: Vec<&String> = plan
-        .fields
-        .iter()
-        .filter(|f| !COLUMNS.contains(&f.as_str()))
-        .collect();
-    let sql = format!(
-        "SELECT o.address,o.kind,o.revision,
-            COALESCE((SELECT target FROM joppa.object_aliases a WHERE a.workspace=o.workspace AND a.address=o.parent),o.parent),
-            o.title,o.description,o.owner,{TONE},
-            (SELECT jsonb_object_agg(key,value) FROM jsonb_each({DATA_SQL}) WHERE key=ANY($3))::text
-        FROM joppa.objects o WHERE o.workspace=$1 AND o.present AND o.address=ANY($2)
-        ORDER BY array_position($2::text[],o.address)",
-        DATA_SQL = crate::computed_fields::DATA_SQL
-    );
-    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 3] = [&workspace, &selected, &data];
-    let rows = tx.query_raw(&sql, params).await?;
-    futures_util::pin_mut!(rows);
-    while let Some(r) = futures_util::TryStreamExt::try_next(&mut rows).await? {
-        let part = serde_json::to_string(&item(&r, &plan.fields)?)?;
-        length += part.chars().count() + usize::from(!first);
-        if length <= plan.max_chars {
-            if !first {
-                text.push(',');
-            }
-            text.push_str(&part);
+    let start = "{\"items\":[";
+    let mut reply = Reply {
+        text: start.to_owned(),
+        length: start.chars().count() + tail.chars().count(),
+        first: true,
+        max: plan.max_chars,
+    };
+    match &plan.query {
+        None => {
+            let take = plan.limit.unwrap_or(usize::MAX);
+            let selected: Vec<String> = walked.into_iter().take(take).collect();
+            reply
+                .items(&*tx, workspace, &selected, &plan.fields)
+                .await?;
+            tx.commit().await?;
         }
-        first = false;
+        Some(query) => {
+            // The search calls the embedding provider and takes its own connection, so the
+            // read gives its connection back first.
+            tx.commit().await?;
+            drop(conn);
+            if !walked.is_empty() {
+                let limit = plan.limit.unwrap_or_default() as i64;
+                let found =
+                    search_query::find_within(pool, workspace, query, &walked, limit, embedder)
+                        .await?;
+                let conn = pool.get().await?;
+                reply
+                    .items(&**conn, workspace, &found, &plan.fields)
+                    .await?;
+            }
+        }
     }
-    tx.commit().await?;
-    if length > plan.max_chars {
-        let max = plan.max_chars;
+    if reply.length > plan.max_chars {
+        let (length, max) = (reply.length, plan.max_chars);
         return Err(refuse(
             422,
             format!("response is {length} characters, max_chars is {max}"),
         ));
     }
-    text.push_str(&tail);
-    Ok(text)
+    reply.text.push_str(&tail);
+    Ok(reply.text)
+}
+
+/// The reply text of a read. It grows one item at a time and stops growing past `max`, while
+/// `length` counts every character for the refusal.
+struct Reply {
+    text: String,
+    length: usize,
+    first: bool,
+    max: usize,
+}
+
+impl Reply {
+    /// Add the items of `selected`, in this order, with the requested `fields`.
+    async fn items(
+        &mut self,
+        client: &impl GenericClient,
+        workspace: &str,
+        selected: &[String],
+        fields: &[String],
+    ) -> Result<()> {
+        let data: Vec<&String> = fields
+            .iter()
+            .filter(|f| !COLUMNS.contains(&f.as_str()))
+            .collect();
+        let body = fields.iter().any(|f| f == "body");
+        let sql = format!(
+            "SELECT o.address,o.kind,o.revision,
+                COALESCE((SELECT target FROM joppa.object_aliases a WHERE a.workspace=o.workspace AND a.address=o.parent),o.parent),
+                o.title,CASE WHEN $4::bool THEN o.description END,o.owner,{TONE},
+                CASE WHEN cardinality($3::text[])>0 THEN (SELECT jsonb_object_agg(key,value) FROM jsonb_each({DATA_SQL}) WHERE key=ANY($3))::text END
+            FROM unnest($2::text[]) WITH ORDINALITY s(address,ord)
+            JOIN joppa.objects o ON o.workspace=$1 AND o.address=s.address AND o.present
+            ORDER BY s.ord",
+            DATA_SQL = crate::computed_fields::DATA_SQL
+        );
+        let params: [&(dyn tokio_postgres::types::ToSql + Sync); 4] =
+            [&workspace, &selected, &data, &body];
+        let rows = client.query_raw(&sql, params).await?;
+        futures_util::pin_mut!(rows);
+        while let Some(r) = futures_util::TryStreamExt::try_next(&mut rows).await? {
+            let part = serde_json::to_string(&item(&r, fields)?)?;
+            self.length += part.chars().count() + usize::from(!self.first);
+            if self.length <= self.max {
+                if !self.first {
+                    self.text.push(',');
+                }
+                self.text.push_str(&part);
+            }
+            self.first = false;
+        }
+        Ok(())
+    }
 }
 
 /// The light nodes of the walk: the live nodes below `root` with the root, or every live node
