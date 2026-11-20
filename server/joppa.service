@@ -30,10 +30,9 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/var/lib/joppa
 # Two malloc arenas return freed memory to the system, so the peaks of a build do not stay.
 Environment=MALLOC_ARENA_MAX=2
-MemoryHigh=2G
+# No MemoryHigh: its reclaim stalls the server for hours. Over MemoryMax the kernel stops the
+# server and systemd starts it again in 3 s. The small swap limit keeps it out of swap.
 MemoryMax=3G
-# A small swap limit: over MemoryMax the kernel stops the server and systemd starts it again,
-# instead of a server that waits in swap for hours.
 MemorySwapMax=256M
 TasksMax=512
 LimitNOFILE=8192

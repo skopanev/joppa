@@ -121,12 +121,12 @@ pub(super) fn compute(
     // Each criterion reads only the results of its own tests. The grouping keeps every row,
     // duplicates included, and preserves the input order for each address (the query has no
     // ORDER BY), so a status costs its own results and not every result of the workspace.
-    let mut by_test: std::collections::BTreeMap<&str, Vec<(i64, TestResult)>> = Default::default();
+    let mut by_test: std::collections::BTreeMap<&str, Vec<(i64, &TestResult)>> = Default::default();
     for (id, result) in results {
         by_test
             .entry(result.address.as_str())
             .or_default()
-            .push((*id, result.clone()));
+            .push((*id, result));
     }
     let mut statuses = std::collections::BTreeMap::new();
     for (address, saved, boundary) in criteria {
@@ -135,7 +135,8 @@ pub(super) fn compute(
         let draft = current.is_some_and(|r| r.draft);
         let own: Vec<(i64, TestResult)> = tests
             .iter()
-            .flat_map(|test| by_test.get(test.as_str()).into_iter().flatten().cloned())
+            .flat_map(|test| by_test.get(test.as_str()).into_iter().flatten())
+            .map(|(id, row)| (*id, (*row).clone()))
             .collect();
         // After migrate_test_nodes, each test counts from the reset of its own node. The rows of
         // each stored name of the node count under the name of the test.
@@ -156,7 +157,7 @@ pub(super) fn compute(
                                     *id,
                                     TestResult {
                                         address,
-                                        ..row.clone()
+                                        ..(*row).clone()
                                     },
                                 )
                             })

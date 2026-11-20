@@ -64,14 +64,14 @@ pub async fn catch_up_statuses(pool: &Pool, all: bool) -> Result<usize> {
     Ok(done)
 }
 
-/// The catch-up at serve start, then a full rebuild each day that repairs any drift.
+/// The catch-up of the stale workspaces at serve start, then each day. A full rebuild of
+/// every workspace reads every test result of a large workspace at once and holds its write
+/// lock, so the loop runs none. The writes keep the projection equal to a full rebuild.
 pub async fn status_projection_loop(pool: Pool) {
-    let mut all = false;
     loop {
-        if let Err(e) = catch_up_statuses(&pool, all).await {
+        if let Err(e) = catch_up_statuses(&pool, false).await {
             eprintln!("status projection catch-up failed: {e:#}");
         }
-        all = true;
         tokio::time::sleep(std::time::Duration::from_secs(24 * 60 * 60)).await;
     }
 }
