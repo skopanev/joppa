@@ -18,10 +18,12 @@ pub struct Graph<'a> {
     pub linked: BTreeMap<&'a str, BTreeSet<&'a str>>,
     /// The present nodes that link to each absent node, such as an archived one.
     pub linked_absent: BTreeMap<&'a str, BTreeSet<&'a str>>,
+    /// The status tone of each node that a rule of `from` status reads.
+    tones: BTreeMap<String, String>,
 }
 
 impl<'a> Graph<'a> {
-    pub fn new(w: &'a Workspace) -> Self {
+    pub fn new(w: &'a Workspace, tones: BTreeMap<String, String>) -> Self {
         let types = schema(w).types;
         let rules = types
             .iter()
@@ -34,6 +36,7 @@ impl<'a> Graph<'a> {
             children: BTreeMap::new(),
             linked: BTreeMap::new(),
             linked_absent: BTreeMap::new(),
+            tones,
         };
         for (address, o) in w.objects.iter().filter(|(_, o)| o.current().present) {
             let current = o.current();
@@ -116,10 +119,15 @@ impl<'a> Graph<'a> {
             return self.own(address, field);
         };
         match rule.source() {
+            "status" => {
+                let value = rule.map.get(self.tones.get(address)?)?;
+                Some(Value::String(value.clone()))
+            }
             "links" => {
                 let linked = self.linked.get(address).into_iter().flatten();
-                let own = linked.filter(|a| self.source(a, field) == "own");
-                first(&rule.values, own.filter_map(|a| self.own(a, field)))
+                let read = linked.filter(|a| matches!(self.source(a, field), "own" | "status"));
+                let values: Vec<Value> = read.filter_map(|a| self.value(field, a, memo)).collect();
+                first(&rule.values, values.into_iter())
             }
             "children" => {
                 let mut values = vec![];

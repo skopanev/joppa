@@ -87,7 +87,7 @@ pub(in crate::store) async fn update(
     };
     store_rows(client, workspace, "rollup", &patches).await?;
     stamp(client, workspace, position).await?;
-    super::computed::update(client, workspace, state, previous, &dirty).await?;
+    super::computed::update(client, workspace, state, previous, &dirty, &nodes).await?;
     super::dimensions::update(client, workspace, (state, previous), &dirty, &nodes).await?;
     Ok(true)
 }

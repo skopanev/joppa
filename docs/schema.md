@@ -200,9 +200,16 @@ With tasks `["web", "api"]` and `["api", "ios"]` under it, the AC gives `"tags":
   node or that it has such an edge to, the one that comes first in `values`. Any number of
   edges counts. A flow edge does not count.
 - `parent`: the value of the nearest ancestor that has one.
-- An enum field takes `children` or `links`. A list field takes `children`. Another field
+- `status` on an enum field: the value that `map` gives for the status tone of the node. For
+  example `{"type": "enum", "values": ["to_decide", "to_prepare", "in_progress", "done"],
+  "from": "status", "map": {"green": "done", "blue": "in_progress", "red": "to_decide",
+  "orange": "to_prepare"}}` gives done when the tone is green. A map key is a tone (red,
+  orange, yellow, blue, green), and a map value is one of `values`. A tone without a value
+  gives no value. Only `status` takes `map`. A record of test results or a check run that
+  changes a tone recomputes the value without a save, so no test result resets.
+- An enum field takes `children`, `links` or `status`. A list field takes `children`. Another field
   takes only `own` or `parent`. A value that `values` does not name counts not.
-- `links` reads only own values, and `children` skips the children of the `parent` rule. So the
+- `status` reads only the tone, `links` reads only own and status values, and `children` skips the children of the `parent` rule. So the
   values have no cycle.
 - Each write that changes a node, its parent, its children or its links recomputes the values
   that it reaches, and the server stores them. A read gives them in `data`, and the `data`

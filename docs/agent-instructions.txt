@@ -1,5 +1,5 @@
 Read joppa_tree for the types, parents, references, questions, status rules and typed fields of the workspace. Use those rules.
-A typed field (fields.<name>) has type, values and from. The order of values is the rollup priority: the first value wins. from own: the node stores the value. from children, links or parent: the server computes it, a read gives it in data, and a save that sends it is refused.
+A typed field (fields.<name>) has type, values and from. The order of values is the rollup priority: the first value wins. from own: the node stores the value. from children, links, parent or status (map: tone to value): the server computes it, a read gives it in data, and a save that sends it is refused.
 
 Reads:
 - joppa_objects reads a public item ID, such as joppa-R-DP6KXM62, as an address. Send it as address.

@@ -21,7 +21,8 @@ pub(in crate::store) async fn rebuild(
         client.execute(sql, &[&workspace]).await?;
         return Ok(());
     }
-    let graph = Graph::new(state);
+    let rules = rules(&crate::objects::schema(state).types);
+    let graph = Graph::new(state, tones(client, workspace, &rules).await?);
     let mut memo = Memo::new();
     let rows: Vec<Value> = state
         .objects
@@ -31,29 +32,41 @@ pub(in crate::store) async fn rebuild(
     store_column(client, workspace, "computed", &rows).await
 }
 
-/// Store the computed values of the nodes that the write of `dirty` reaches.
+/// Store the computed values of the nodes that the write of `dirty` reaches. `nodes` are the
+/// nodes whose tone the same status delta recomputed: a rule of `from` status reads them.
 pub(in crate::store) async fn update(
     client: &impl GenericClient,
     workspace: &str,
     state: &Workspace,
     previous: &Workspace,
     dirty: &BTreeSet<String>,
+    nodes: &BTreeSet<String>,
 ) -> Result<()> {
     let rules = rules(&crate::objects::schema(state).types);
     if rules.is_empty() {
         return Ok(());
     }
-    // A computed value reads only objects: their data, parents, links and presence. A write
-    // that changes no object, such as a note or a record of results, changes no value.
+    // A computed value reads objects: their data, parents, links and presence, and with a rule
+    // of `from` status their tones. A write that changes no object and no tone, such as a
+    // note, changes no value. A record of results or a check run changes tones only.
     let same = |a: &String| match (state.objects.get(a), previous.objects.get(a)) {
         (Some(new), Some(old)) => std::sync::Arc::ptr_eq(new, old),
         (None, None) => true,
         _ => false,
     };
-    if dirty.iter().all(same) {
+    let status = rules
+        .values()
+        .flat_map(|kinds| kinds.values())
+        .any(|rule| rule.source() == "status");
+    if dirty.iter().all(same) && (!status || nodes.is_empty()) {
         return Ok(());
     }
-    let graph = Graph::new(state);
+    let graph = Graph::new(state, tones(client, workspace, &rules).await?);
+    let mut seed = dirty.clone();
+    if status {
+        seed.extend(nodes.iter().cloned());
+    }
+    let dirty = &seed;
     let downward = rules
         .values()
         .flat_map(|kinds| kinds.values())
@@ -168,4 +181,35 @@ fn ancestors(w: &Workspace, address: &str) -> Vec<String> {
         out.push(parent);
     }
     out
+}
+
+/// The status tone of each present node whose type has a rule of `from` status, as the status
+/// projection stored it.
+async fn tones(
+    client: &impl GenericClient,
+    workspace: &str,
+    rules: &std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, crate::field_types::FieldType>,
+    >,
+) -> Result<std::collections::BTreeMap<String, String>> {
+    let mut tones = std::collections::BTreeMap::new();
+    let kinds: Vec<&String> = rules
+        .values()
+        .flat_map(|kinds| kinds.iter())
+        .filter(|(_, rule)| rule.source() == "status")
+        .map(|(kind, _)| kind)
+        .collect();
+    if kinds.is_empty() {
+        return Ok(tones);
+    }
+    let sql = "SELECT address,COALESCE(rollup->'signal'->>'tone',signal->>'tone') FROM joppa.objects WHERE workspace=$1 AND present AND kind=ANY($2)";
+    crate::store::stream::each(client, sql, &[&workspace, &kinds], |row| {
+        if let Some(tone) = row.get::<_, Option<String>>(1) {
+            tones.insert(row.get(0), tone);
+        }
+        Ok(())
+    })
+    .await?;
+    Ok(tones)
 }

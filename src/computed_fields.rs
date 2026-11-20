@@ -7,9 +7,11 @@
 //! - links: the own value of the present nodes with a depends_on or related edge to the node
 //!   or from it, the one that comes first in `values`. A flow edge does not count.
 //! - parent: the value of the nearest ancestor that has one.
+//! - status: the value that `map` gives for the status tone of the node.
 //!
-//! The order own, links, children, parent has no cycle: links reads only own values, children
-//! skips the children of the parent rule, and parent reads the nodes above.
+//! The order own, status, links, children, parent has no cycle: status reads only the tone,
+//! links reads only own and status values, children skips the children of the parent rule, and
+//! parent reads the nodes above.
 use crate::field_types::FieldType;
 use crate::model::Workspace;
 use crate::objects::{TreeType, schema};
@@ -52,6 +54,7 @@ pub fn computed(t: &TreeType) -> BTreeMap<String, FieldType> {
             kind: "list".into(),
             values: vec![],
             from: Some(from),
+            map: Default::default(),
         };
         Some((field.clone(), rule))
     });

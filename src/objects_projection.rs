@@ -10,7 +10,7 @@ pub(super) use store_columns::{store_column, store_rows};
 
 /// The code version of the stored statuses and decorations. A change of the status rules or
 /// of the decoration helpers must raise it.
-pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 13;
+pub(in crate::store) const STATUS_PROJECTION_VERSION: i32 = 14;
 
 /// The row fields that the decoration helpers set, at the top level and inside process.
 const FIELDS: [&str; 1] = ["child_counts"];

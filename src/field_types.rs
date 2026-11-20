@@ -6,6 +6,10 @@
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
+
+/// The status tones that a map of `from` status names.
+pub const TONES: [&str; 5] = ["red", "orange", "yellow", "blue", "green"];
 
 /// The types of a data field.
 pub const TYPES: [&str; 5] = ["text", "number", "boolean", "enum", "list"];
@@ -18,9 +22,13 @@ pub struct FieldType {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<String>,
-    /// The source of the value: own (the default), children, links or parent.
+    /// The source of the value: own (the default), status, children, links or parent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
+    /// With `from` status: the value of each status tone of the node. A tone without a value
+    /// gives no value.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub map: BTreeMap<String, String>,
     /// True shows the field on the web card of an object. The MCP tree does not give it.
     #[serde(
         default,
@@ -43,7 +51,7 @@ fn board_flag<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<boo
 }
 
 /// The sources of a field value.
-pub const SOURCES: [&str; 4] = ["own", "children", "links", "parent"];
+pub const SOURCES: [&str; 5] = ["own", "status", "children", "links", "parent"];
 
 impl FieldType {
     /// The source of the value: own when the rule names none.
@@ -83,8 +91,26 @@ pub fn validate_rule(field: &str, rule: &FieldType) -> Result<()> {
     }
     ensure!(
         SOURCES.contains(&rule.source()),
-        "{field}: from is own, children, links or parent"
+        "{field}: from is own, status, children, links or parent"
     );
+    if rule.source() == "status" {
+        ensure!(
+            rule.kind == "enum" && !rule.map.is_empty(),
+            "{field}: from status takes an enum field with a map of tones"
+        );
+        for (tone, value) in &rule.map {
+            ensure!(
+                TONES.contains(&tone.as_str()),
+                "{field}: a map key is a tone: red, orange, yellow, blue or green"
+            );
+            ensure!(
+                rule.values.contains(value),
+                "{field}: the map value {value} is not one of the values"
+            );
+        }
+    } else {
+        ensure!(rule.map.is_empty(), "{field}: only from status takes a map");
+    }
     let list_children = rule.kind == "list" && rule.source() == "children";
     ensure!(
         !matches!(rule.source(), "children" | "links") || rule.kind == "enum" || list_children,
