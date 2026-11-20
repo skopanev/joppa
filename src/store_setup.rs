@@ -189,8 +189,7 @@ async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
                 &[&workspace],
             )
             .await?;
-        let (mut state, old_events) = state_rows::full(client, &workspace).await?;
-        let position = old_events.last().map_or(0, |e|e.position);
+        let (mut state, position) = state_rows::full_state(client, &workspace).await?;
         let previous = state.clone();
         let mut events = Vec::new();
         if ensure_notes(client, &workspace, &mut state, &mut events, position).await? {

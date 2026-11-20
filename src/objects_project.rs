@@ -24,22 +24,9 @@ pub(in crate::store) async fn project(
         .iter()
         .map(|r| (r.get(0), r.get(1)))
         .collect();
-    let schema_changed = events.iter().any(|e| {
-        matches!(
-            e.command,
-            Command::SetTreeSchema(crate::commands::SetTreeSchemaOp { .. })
-                | Command::MigrateSchema {}
-                | Command::MigrateDocuments {}
-                | Command::MigrateConsumers {}
-                | Command::MigrateTestRules {}
-                | Command::MigrateNoteParents {}
-                | Command::MigrateBody {}
-                | Command::MigratePurpose {}
-                | Command::MigrateTestNodes {}
-                | Command::MigrateGenericNodes {}
-                | Command::MigrateDecisionRequired {}
-        )
-    });
+    let schema_changed = events
+        .iter()
+        .any(|e| crate::store::schema_event(&e.command));
     // A redaction rewrites the stored revisions of its object. Nothing else may.
     let redactions: Vec<(String, String)> = events
         .iter()

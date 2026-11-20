@@ -88,54 +88,10 @@ pub struct Event {
     pub recorded_at: String,
     pub command: Command,
 }
-async fn load(client: &impl GenericClient, workspace: &str) -> Result<(Workspace, Vec<Event>)> {
-    crate::probe::count(&crate::probe::REPLAY);
-    let rows = client.query("SELECT position,actor,recorded_at::text,command::text,alias FROM joppa.events WHERE workspace=$1 ORDER BY position", &[&workspace]).await.context("run joppa migrate before using the journal")?;
-    let mut state = Workspace::default();
-    if !rows.is_empty() {
-        state.replay_epochs = replay_epochs(client, workspace).await?;
-    }
-    let mut events = vec![];
-    for row in rows {
-        let position = row.get::<_, i64>(0) as u64;
-        let actor: String = row.get(1);
-        let command: Command = serde_json::from_str(row.get::<_, &str>(3))?;
-        state.alias = row.get(4);
-        commands::apply_replay(&mut state, &actor, &command, position, row.get(2))
-            .with_context(|| format!("invalid journal entry at {workspace}/{position}"))?;
-        events.push(Event {
-            position,
-            actor,
-            recorded_at: row.get(2),
-            command,
-        });
-    }
-    Ok((state, events))
-}
-/// The replay epochs of a workspace that has a journal. A missing rule stops the replay:
-/// without its epoch the replay cannot tell the old meaning of an event from the new one.
-async fn replay_epochs(
-    client: &impl GenericClient,
-    workspace: &str,
-) -> Result<std::collections::BTreeMap<String, u64>> {
-    let epochs: std::collections::BTreeMap<String, u64> = client
-        .query(
-            "SELECT rule,first_position FROM joppa.replay_epochs WHERE workspace=$1",
-            &[&workspace],
-        )
-        .await?
-        .iter()
-        .map(|row| (row.get::<_, String>(0), row.get::<_, i64>(1) as u64))
-        .collect();
-    for rule in commands::REPLAY_RULES {
-        ensure!(
-            epochs.contains_key(rule),
-            "workspace {workspace} has no replay epoch for rule {rule}; run joppa migrate"
-        );
-    }
-    Ok(epochs)
-}
-
+#[path = "store_replay.rs"]
+mod replay;
+use replay::load;
+pub(in crate::store) use replay::schema_event;
 /// A new workspace starts with every replay rule in force.
 pub(super) async fn start_replay_epochs(
     client: &impl GenericClient,
