@@ -25,6 +25,14 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 
 - The server reads 1 to 100 addresses in one snapshot. Each fact takes at most one query for
   all addresses, and a read with `fields` loads only the facts that its fields need.
+- `data` holds only what the authors wrote. The values of the computed fields come apart, in
+  `computed`, which shows only when it holds a value. `fields: ["computed"]` or
+  `["computed.<key>"]` gives them on an address read and on a list, `{}` when there is none
+  and on an older revision. A bare name such as `["stage"]`, the data filter and `group_by`
+  read the data, else the computed value. The HTTP `/api` read keeps the computed values in
+  `data`.
+- `fields: ["comments_active"]` gives a page of the comments that are not withdrawn, and
+  `["comments_latest"]` the newest 5 of them in time order.
 - `comments_count` counts the comments without the withdrawn ones, and `files_count` the
   attached files. Each shows only when it is above 0. `fields: ["comments_count"]` gives 0.
 - The detail gives no `comments`, `files`, `child_counts` or `references`. `fields` gives

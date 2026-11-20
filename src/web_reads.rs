@@ -197,6 +197,7 @@ pub(super) async fn objects(
             },
         )
         .await
+        .map(merged)
         .map(|reply| joppa::read_shapes::keep_item_fields(reply, fields.as_deref())),
     )
 }
@@ -228,4 +229,17 @@ pub(super) async fn tree_schema(
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
     result(store::tree_schema(&app.pool, &workspace, &actor, q.revision).await)
+}
+
+/// An object read over HTTP keeps the computed values in its data, as the board reads them.
+/// MCP gives them apart, in `computed`.
+fn merged(mut reply: Value) -> Value {
+    let computed = reply.as_object_mut().and_then(|m| m.remove("computed"));
+    let data = reply.get_mut("document").and_then(|d| d.get_mut("data"));
+    if let (Some(Value::Object(computed)), Some(data)) =
+        (computed, data.and_then(Value::as_object_mut))
+    {
+        data.extend(computed);
+    }
+    reply
 }

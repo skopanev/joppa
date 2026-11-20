@@ -92,17 +92,21 @@ pub async fn read_cards(
         false => "NULL::text",
     };
     let sql = format!(
-        "SELECT o.address,o.kind,o.local_id,o.revision,{document}::text,o.signal::text,o.process::text,o.rollup::text,{tests},{kind}
+        "SELECT o.address,o.kind,o.local_id,o.revision,{document}::text,o.signal::text,o.process::text,o.rollup::text,{tests},{kind},
+            CASE WHEN $3 THEN (o.document->'data')::text END,COALESCE(o.computed,'{{}}'::jsonb)::text
         FROM unnest($2::text[]) WITH ORDINALITY k(asked,n)
         LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=k.asked
         LEFT JOIN joppa.objects o ON o.workspace=$1 AND o.address=COALESCE(a.target,k.asked)
         ORDER BY k.n"
     );
-    let rows = conn.query(&sql, &[&workspace, &addresses]).await?;
+    let authored = needs.document || needs.references;
+    let rows = conn
+        .query(&sql, &[&workspace, &addresses, &authored])
+        .await?;
     let mut items = Vec::with_capacity(rows.len());
     let mut tests = Vec::with_capacity(rows.len());
     let mut types = Vec::with_capacity(rows.len());
-    let (mut asked, mut missing) = (vec![], vec![]);
+    let (mut asked, mut missing, mut authors) = (vec![], vec![], vec![]);
     for (row, wanted) in rows.iter().zip(addresses) {
         let Some(address) = row.get::<_, Option<String>>(0) else {
             missing.push((*wanted).to_owned());
@@ -128,6 +132,9 @@ pub async fn read_cards(
         super::projection::apply_rollup(&mut item, &super::projection::stored(row.get(7))?);
         tests.push(super::projection::stored(row.get(8))?);
         types.push(parse(9, Value::Null)?);
+        // The data stays as its authors wrote it, and the computed values come apart.
+        authors.push(parse(10, Value::Null)?);
+        item["computed"] = strip_nulls(parse(11, json!({}))?);
         items.push(item);
     }
     let known = facts::Known {
@@ -135,6 +142,12 @@ pub async fn read_cards(
         types: &types,
     };
     facts::add(&conn, &workspace, actor, &mut items, known, needs).await?;
+    // A computed reference reads the computed values, so the data parts only after the facts.
+    for (item, data) in items.iter_mut().zip(authors) {
+        if !data.is_null() {
+            item["document"]["data"] = data;
+        }
+    }
     // The commit ends the snapshot inside the read, so no ROLLBACK follows it later.
     conn.commit().await?;
     Ok((asked.into_iter().zip(items).collect(), missing))
@@ -170,4 +183,12 @@ pub(super) async fn add_list_facts(
         types: &types,
     };
     facts::add(conn, workspace, "", items, known, narrow).await
+}
+
+/// The computed values without the fields that have no value.
+pub(in crate::store) fn strip_nulls(mut computed: Value) -> Value {
+    if let Some(map) = computed.as_object_mut() {
+        map.retain(|_, v| !v.is_null());
+    }
+    computed
 }

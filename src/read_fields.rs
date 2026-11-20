@@ -8,9 +8,10 @@ use serde_json::{Map, Value, json};
 /// The first path segments that a list item gives itself. `status` is the status tone, and
 /// `relations` gives the stored relations of the item. A read by address gives its detail
 /// relations.
-pub const LIST_FIELDS: [&str; 18] = [
+pub const LIST_FIELDS: [&str; 19] = [
     "address",
     "data",
+    "computed",
     "kind",
     "id",
     "revision",
@@ -164,7 +165,11 @@ pub fn value(item: &Value, detail: Option<&Value>, field: &str) -> Value {
         _ if field == "status" => item["signal"]["tone"].clone(),
         Some(detail) if DETAIL_FIELDS.contains(&head) => path(detail, field),
         _ if LIST_FIELDS.contains(&head) => path(item, field),
-        _ => path(&item["data"], field),
+        // A bare name reads the authored data, else the computed value.
+        _ => match path(&item["data"], field) {
+            Value::Null => path(&item["computed"], field),
+            value => value,
+        },
     }
 }
 
@@ -182,14 +187,18 @@ pub fn object_fields(reply: &Value, detail: Option<&Value>, fields: &[String]) -
     let inbox = reply["inbox"] == true;
     let note_status = inbox.then(|| data["status"].as_str().unwrap_or("unprocessed"));
     let item = json!({"address": reply["address"], "kind": reply["kind"], "id": reply["id"],
-        "revision": revision,
-        "parent": document["parent"], "data": data, "title": data["title"],
-        "owner": data["owner"],
-        "at": document["at"], "body": data["body"],
-        "signal": reply["signal"], "present": document["present"] != false,
-        "note_status": note_status, "process": reply["process"],
-        "status": crate::read_compact::status(reply), "children": reply["children"],
-        "child_counts": reply["child_counts"]});
+    "revision": revision,
+    "parent": document["parent"], "data": data, "title": data["title"],
+    "owner": data["owner"],
+    "at": document["at"], "body": data["body"],
+    "signal": reply["signal"], "present": document["present"] != false,
+    "note_status": note_status, "process": reply["process"],
+    "status": crate::read_compact::status(reply), "children": reply["children"],
+    "child_counts": reply["child_counts"],
+    "computed": match &reply["computed"] {
+        Value::Null => json!({}),
+        computed => computed.clone(),
+    }});
     let mut out = Map::new();
     out.insert("address".into(), item["address"].clone());
     for field in fields {
