@@ -22,7 +22,7 @@ pub(in crate::store) async fn rebuild(
         return Ok(());
     }
     let rules = rules(&crate::objects::schema(state).types);
-    let graph = Graph::new(state, tones(client, workspace, &rules).await?);
+    let graph = Graph::new(state, tones(client, workspace, &rules, None).await?);
     let mut memo = Memo::new();
     let rows: Vec<Value> = state
         .objects
@@ -61,7 +61,7 @@ pub(in crate::store) async fn update(
     if dirty.iter().all(same) && (!status || nodes.is_empty()) {
         return Ok(());
     }
-    let graph = Graph::new(state, tones(client, workspace, &rules).await?);
+    let mut graph = Graph::new(state, Default::default());
     let mut seed = dirty.clone();
     if status {
         seed.extend(nodes.iter().cloned());
@@ -72,6 +72,16 @@ pub(in crate::store) async fn update(
         .flat_map(|kinds| kinds.values())
         .any(|rule| rule.source() == "parent");
     let reached = reach(&graph, state, previous, dirty, downward);
+    if status {
+        // Only the reached nodes, their links and their children read a tone.
+        let mut read: BTreeSet<&str> = reached.iter().map(String::as_str).collect();
+        for a in &reached {
+            read.extend(graph.linked.get(a.as_str()).into_iter().flatten().copied());
+            read.extend(graph.children(a).iter().copied());
+        }
+        let read: Vec<&str> = read.into_iter().collect();
+        graph.set_tones(tones(client, workspace, &rules, Some(&read)).await?);
+    }
     let mut memo = stored(client, workspace, &graph, &reached).await?;
     let rows: Vec<Value> = reached
         .iter()
@@ -184,7 +194,7 @@ fn ancestors(w: &Workspace, address: &str) -> Vec<String> {
 }
 
 /// The status tone of each present node whose type has a rule of `from` status, as the status
-/// projection stored it.
+/// projection stored it: of the nodes of `addresses`, or of the workspace.
 async fn tones(
     client: &impl GenericClient,
     workspace: &str,
@@ -192,6 +202,7 @@ async fn tones(
         String,
         std::collections::BTreeMap<String, crate::field_types::FieldType>,
     >,
+    addresses: Option<&[&str]>,
 ) -> Result<std::collections::BTreeMap<String, String>> {
     let mut tones = std::collections::BTreeMap::new();
     let kinds: Vec<&String> = rules
@@ -203,13 +214,21 @@ async fn tones(
     if kinds.is_empty() {
         return Ok(tones);
     }
-    let sql = "SELECT address,COALESCE(rollup->'signal'->>'tone',signal->>'tone') FROM joppa.objects WHERE workspace=$1 AND present AND kind=ANY($2)";
-    crate::store::stream::each(client, sql, &[&workspace, &kinds], |row| {
+    // A write reads its nodes by the primary key. The full rebuild reads every node of the kinds.
+    let tone = "SELECT address,COALESCE(rollup->'signal'->>'tone',signal->>'tone') FROM joppa.objects WHERE workspace=$1 AND present AND kind=ANY($2)";
+    let mut keep = |row: tokio_postgres::Row| {
         if let Some(tone) = row.get::<_, Option<String>>(1) {
             tones.insert(row.get(0), tone);
         }
         Ok(())
-    })
-    .await?;
+    };
+    match addresses {
+        Some(addresses) => {
+            let sql = format!("{tone} AND address=ANY($3)");
+            crate::store::stream::each(client, &sql, &[&workspace, &kinds, &addresses], keep)
+                .await?
+        }
+        None => crate::store::stream::each(client, tone, &[&workspace, &kinds], &mut keep).await?,
+    }
     Ok(tones)
 }

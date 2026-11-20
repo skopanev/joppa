@@ -62,6 +62,11 @@ impl<'a> Graph<'a> {
         graph
     }
 
+    /// Give the graph the status tones that the rules of `from` status read.
+    pub fn set_tones(&mut self, tones: BTreeMap<String, String>) {
+        self.tones = tones;
+    }
+
     fn present(&self, address: &str) -> bool {
         self.w
             .objects
