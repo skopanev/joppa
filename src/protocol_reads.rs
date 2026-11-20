@@ -174,7 +174,11 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
         check(fields, false, &data)?;
     }
-    Ok(rc::list(reply, fields.as_deref()))
+    let mut out = rc::list(reply, fields.as_deref());
+    if let Some(fields) = &fields {
+        details::add(pool, workspace, actor, &mut out, fields).await?;
+    }
+    Ok(out)
 }
 
 /// The member read of one relation (src/relation_members.rs), in pages of 25.
@@ -202,6 +206,9 @@ async fn members(
         check(fields, false, &data)?;
     }
     let mut reply = rc::list(reply, fields.as_deref());
+    if let Some(fields) = &fields {
+        details::add(pool, workspace, actor, &mut reply, fields).await?;
+    }
     if let Some(items) = reply["items"].as_array_mut() {
         items.iter_mut().for_each(joppa::relation_members::nest);
     }
@@ -210,12 +217,16 @@ async fn members(
 
 #[path = "protocol_reads_address.rs"]
 mod address;
+#[path = "protocol_reads_details.rs"]
+mod details;
 
 /// Refuse an older text field, and a detail key on a list read that no returned document holds.
 /// A read by address (`detail`) takes the detail keys. Each other bare name reads its data field.
 fn check(fields: &[String], detail: bool, data: &[&Value]) -> anyhow::Result<()> {
     rc::check_fields(fields, |head| {
-        (detail && rc::DETAIL_FIELDS.contains(&head)) || data.iter().any(|d| d.get(head).is_some())
+        (detail && rc::DETAIL_FIELDS.contains(&head))
+            || rc::LIST_DETAIL_FIELDS.contains(&head)
+            || data.iter().any(|d| d.get(head).is_some())
     })
 }
 

@@ -1,7 +1,7 @@
 //! The aggregate counts of a list read (src/node_counts.rs). One statement counts the nodes
 //! that the node filters keep, with the read rights and the archived rule of the list: the
 //! present nodes, and the current archived nodes too when `status` names the archived tone.
-//! Without a filter, the list and the counts keep the roots.
+//! Without a filter, the list and the count keep the roots. A group_by counts every node.
 use super::*;
 use crate::node_counts::{Aggregate, Key};
 
@@ -20,7 +20,8 @@ pub async fn count_objects(
         .start()
         .await?;
     let archived = filter.archived();
-    let bound = crate::node_filter::bind(&*conn, &workspace, filter, true, archived).await?;
+    let roots = matches!(aggregate, Aggregate::Count);
+    let bound = crate::node_filter::bind(&*conn, &workspace, filter, roots, archived).await?;
     // $1 is the workspace, $2 the archived flag, $3 to $10 the clause, $11 on the data fields.
     let keys: &[Key] = match aggregate {
         Aggregate::Count => &[],

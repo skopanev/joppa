@@ -9,7 +9,10 @@ use serde_json::{Map, Value, json};
 pub use crate::read_detail::{detail, detail_keys, headers, revision};
 #[path = "read_fields.rs"]
 mod fields;
-pub use fields::{DETAIL_FIELDS, card_needs, check_fields, head, needs_data, object_fields};
+pub use fields::{
+    DETAIL_FIELDS, LIST_DETAIL_FIELDS, card_needs, check_fields, detail_value, head, needs_data,
+    object_fields,
+};
 
 /// The page size of object lists, comments and edges.
 pub const PAGE: usize = 25;

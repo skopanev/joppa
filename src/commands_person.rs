@@ -187,6 +187,7 @@ fn writes_no_document(command: &Command) -> bool {
             | Command::EnrollService { .. }
             | Command::RemoveMember { .. }
             | Command::SetRole { .. }
+            | Command::RedactObject { .. }
             | Command::UpdateWorkspace(_)
             | Command::RenameWorkspace(_)
     )

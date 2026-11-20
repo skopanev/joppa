@@ -23,7 +23,7 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
 }
 ```
 
-- The server reads 1 to 25 addresses in one snapshot. Each fact takes at most one query for
+- The server reads 1 to 100 addresses in one snapshot. Each fact takes at most one query for
   all addresses, and a read with `fields` loads only the facts that its fields need.
 - `comments_count` counts the comments without the withdrawn ones, and `files_count` the
   attached files. Each shows only when it is above 0. `fields: ["comments_count"]` gives 0.
@@ -85,14 +85,14 @@ oldest first, in pages of 25. Send `next_cursor` back as `cursor` for the next p
 
 ## More addresses in one read
 
-`address` takes 1 to 25 addresses separated by commas, as many as one page. Spaces around
+`address` takes 1 to 100 addresses separated by commas. Spaces around
 an address are ignored.
 
 ```json
 {"workspace": "w", "address": "ac:a,requirement:r"}
 ```
 
-One address gives the object itself, as above. 2 to 25 addresses give `{"items": [...]}`
+One address gives the object itself, as above. 2 to 100 addresses give `{"items": [...]}`
 in the order of the request. Each item is the detail of one object with its `address`. A
 duplicate address gives the object again, and an alias or a public item ID gives its object:
 
@@ -101,16 +101,18 @@ duplicate address gives the object again, and an alias or a public item ID gives
            {"address": "requirement:r", "revision": 5, "data": {}}]}
 ```
 
-- More than 25 addresses are refused: `at most 25 addresses in one call`.
+- More than 100 addresses are refused: `at most 100 addresses in one call`.
 - An empty address is refused: `empty address in the address list`.
 - `history`, `revision` and `comments_cursor` need one address. With more addresses they are
   refused: `history, revision and comments_cursor read one address`.
-- An unknown address refuses the whole read: `unknown object`.
+- With 2 or more addresses, each unknown address goes into `missing`, a list in the order of
+  the request, and the found objects stay in `items`. `missing` shows only when it is not
+  empty. One unknown address alone is refused: `unknown object: <address>`.
 - A reply of 2 or more objects above 256 KB is refused. A read of one object comes in full.
 
 ## Named fields of an object read by its address
 
-`fields` with `address` gives only the named paths. `address` shows only for 2 to 25
+`fields` with `address` gives only the named paths. `address` shows only for 2 to 100
 addresses, or when the request named an alias. Name `revision` to get the revision.
 
 ```json

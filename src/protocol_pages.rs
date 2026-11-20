@@ -8,12 +8,17 @@ use serde_json::{Value, json};
 
 /// The page size of a list, from `limit`: `default` without it, at most rc::PAGE.
 pub fn limit(a: &Value, default: usize) -> anyhow::Result<usize> {
+    limit_to(a, default, rc::PAGE)
+}
+
+/// The page size of `a`: `default` without one, at most `max`.
+fn limit_to(a: &Value, default: usize, max: usize) -> anyhow::Result<usize> {
     let Some(value) = a.get("limit").filter(|v| !v.is_null()) else {
         return Ok(default);
     };
     let n = value.as_u64().context("limit must be a whole number")?;
     ensure!(n >= 1, "limit must be at least 1");
-    Ok((n as usize).min(rc::PAGE))
+    Ok((n as usize).min(max))
 }
 
 /// joppa_list: the workspaces that the actor can read, in pages of 25, as {id, title} and
@@ -83,9 +88,12 @@ pub async fn search(
     Ok(reply)
 }
 
-/// joppa_history: the History read with a clamped page size, 25 by default.
+/// The largest page of a History read.
+const HISTORY_MAX: usize = 100;
+
+/// joppa_history: the History read with a clamped page size, 25 by default and 100 at most.
 pub fn history_args(a: &Value) -> anyhow::Result<Value> {
     let mut args = a.clone();
-    args["limit"] = json!(limit(a, rc::PAGE)?);
+    args["limit"] = json!(limit_to(a, rc::PAGE, HISTORY_MAX)?);
     Ok(args)
 }

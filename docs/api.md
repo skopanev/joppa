@@ -73,6 +73,7 @@ The refusal is "<op> was removed; use <replacement>". The replacement of `commen
 for each journal event.
 
 - Each entry has `position`, `at`, `actor`, `address`, `title`, `revision`, `change`, `op`, `reason` and `status`.
+- A page has 25 entries by default and at most 100 (`limit`).
 - `status` is `open` until a member marks the entry processed with `joppa_history_mark`. A processed entry also has `processed`: `actor`, `at`, `reason` and `nodes`.
 - A comment entry (op `comment`, `note` or `withdraw_note`) also has `comment_id`.
 - `change` is save, move, relations, flow, archive, restore, comment, file, tests, readiness, priority, task, results, planning, member, schema, workspace or other. A move is a save that changes only the parent. A save that changes only the relations is `relations`, and only flow keys `flow`.
@@ -283,7 +284,7 @@ code button. The code stays bound to the callback, the client and the PKCE verif
 
 Several agents of one person share the OAuth session of that person. Each MCP tool takes the
 argument `alias`, such as `p1`. The header `X-Joppa-Alias` gives the alias of every call of a
-session, and the argument wins. An alias has 1 to 40 letters, digits, `-`, `_` or `.`.
+session, and the argument wins. An alias has 1 to 40 letters, digits, `-`, `_`, `.` or `/`, such as `crew/p1`. A `/` does not start or end the alias or repeat.
 
 - The alias changes no access: the actor of the session keeps every right.
 - The journal stores it with each event (`joppa.events.alias`), and a History mark stores it too.

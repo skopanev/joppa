@@ -3,7 +3,7 @@
 //! The journal is append-only: the original stays there, and only the database owner reads it.
 use crate::model::Workspace;
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 pub const MASK: &str = "[redacted]";
@@ -25,6 +25,19 @@ fn mask(value: &mut Value, fragment: &str) {
     }
 }
 
+/// Mask `fragment` in each text of `entry`.
+fn mask_entry<T: Serialize + DeserializeOwned>(entry: &mut T, fragment: &str) -> Result<()> {
+    let mut value = serde_json::to_value(&*entry)?;
+    mask(&mut value, fragment);
+    *entry = serde_json::from_value(value)?;
+    Ok(())
+}
+
+/// True when the JSON of `entry` holds `encoded`.
+fn holds<T: Serialize>(entry: &T, encoded: &str) -> Result<bool> {
+    Ok(serde_json::to_string(entry)?.contains(encoded))
+}
+
 pub fn redact(
     w: &mut Workspace,
     actor: &str,
@@ -43,6 +56,26 @@ pub fn redact(
     for revision in &mut object.revisions {
         mask(&mut revision.data, fragment);
         revision.reason = revision.reason.replace(fragment, MASK);
+    }
+    // The requirements, with their revisions, comments and criteria, the intake records and the
+    // notes of the object hold copies of the text too. Search reads them, so they mask it.
+    let encoded = serde_json::to_string(fragment)?;
+    let encoded = &encoded[1..encoded.len() - 1];
+    for requirement in w.requirements.values_mut() {
+        if holds(&**requirement, encoded)? {
+            mask_entry(std::sync::Arc::make_mut(requirement), fragment)?;
+        }
+    }
+    for intake in w.intake.values_mut() {
+        if holds(intake, encoded)? {
+            mask_entry(intake, fragment)?;
+        }
+    }
+    let annotation = crate::objects::annotation_address(w, &key);
+    if let Some(notes) = w.notes.get_mut(&annotation)
+        && holds(&**notes, encoded)?
+    {
+        mask_entry(std::sync::Arc::make_mut(notes), fragment)?;
     }
     w.redactions.entry(key).or_default().push(Redaction {
         actor: actor.into(),

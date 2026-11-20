@@ -48,7 +48,7 @@ pub(super) fn objects() -> Value {
     node_filters(
         json!({
             "workspace": text("key or alias; optional with a public item ID"),
-            "address": text("1 to 25 comma-separated addresses or public item IDs"),
+            "address": text("1 to 100 comma-separated addresses or public item IDs"),
             "fields": {"type":"array","items":{"type":"string"},
                 "description":"keys to return, on a list and on an address read: title, body, status, children, relations, comments, files, child_counts, references or a data name"},
             "limit": {"type":"integer","minimum":1,"maximum":100,

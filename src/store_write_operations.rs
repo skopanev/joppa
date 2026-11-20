@@ -166,6 +166,14 @@ pub(crate) async fn write(
     let selected = state_rows::affected(&state, Some(&previous))?;
     // The search rows of the reached objects follow later (search_pending.rs).
     let position = (base_position, base_position + events.len() as u64);
+    // A redaction masks text that the search rows of other objects quote too: every document
+    // row rebuilds, and the revision rows of the reached objects renew.
+    if events
+        .iter()
+        .any(|e| matches!(e.command, Command::RedactObject { .. }))
+    {
+        super::search_pending::add(&*tx, &workspace, None, position).await?;
+    }
     super::search_pending::add(&*tx, &workspace, selected.as_ref(), position).await?;
     let at = (events.as_slice(), base_position + events.len() as u64);
     let reached = selected.clone();

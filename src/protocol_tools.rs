@@ -34,7 +34,7 @@ pub(super) fn list() -> Vec<Value> {
         ),
         tool(
             "joppa_objects",
-            "Read objects. Without address: a page of items {address, title, status, assignee}. With address: one object with revision, parent, data, status, process, relations and relation_groups; 2 to 25 addresses give {items}. relations_of gives edges in pages. A reply over 256 KB is refused.",
+            "Read objects. Without address: a page of items {address, title, status, assignee}. With address: one object with revision, parent, data, status, process, relations and relation_groups; 2 to 100 addresses give {items}. relations_of gives edges in pages. A reply over 256 KB is refused.",
             schemas::objects(),
             json!([]),
         ),
@@ -47,7 +47,7 @@ pub(super) fn list() -> Vec<Value> {
         tool(
             "joppa_history",
             "Read the History of a workspace: one entry for each change, open until a member marks it processed.",
-            json!({"workspace":w(),"limit":{"type":"integer","minimum":1,"maximum":25,"description":"1 to 25, default 25"},"cursor":text(CURSOR),"order":{"type":"string","enum":["oldest","newest"],"description":"default oldest"},"after":{"type":"integer","minimum":0,"description":"only the entries after this position"},"open":{"type":"boolean","description":"only open entries; next_item names the oldest"}}),
+            json!({"workspace":w(),"limit":{"type":"integer","minimum":1,"maximum":100,"description":"1 to 100, default 25"},"cursor":text(CURSOR),"order":{"type":"string","enum":["oldest","newest"],"description":"default oldest"},"after":{"type":"integer","minimum":0,"description":"only the entries after this position"},"open":{"type":"boolean","description":"only open entries; next_item names the oldest"}}),
             json!(["workspace"]),
         ),
         tool(

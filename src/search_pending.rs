@@ -56,9 +56,15 @@ pub(super) async fn build(client: &impl GenericClient, workspace: &str) -> Resul
     }
     let mut addresses: BTreeSet<String> = rows.iter().map(|r| r.get(0)).collect();
     addresses.remove(MOVE);
-    let selected = (!addresses.contains(ALL)).then_some(addresses);
-    super::search::project(client, workspace, &state, position, selected.as_ref()).await?;
-    super::search_revisions::project(client, workspace, selected.as_ref()).await?;
+    let all = addresses.remove(ALL);
+    let selected = (!all).then_some(&addresses);
+    super::search::project(client, workspace, &state, position, selected).await?;
+    super::search_revisions::project(client, workspace, selected).await?;
+    // With every object, the revision rows of the named objects renew too, such as after a
+    // redaction.
+    if all && !addresses.is_empty() {
+        super::search_revisions::project(client, workspace, Some(&addresses)).await?;
+    }
     Ok(true)
 }
 

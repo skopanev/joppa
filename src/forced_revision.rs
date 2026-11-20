@@ -1,18 +1,18 @@
-//! The rule of forced bumps (requirement:edit-makes-revision). A save, an archive or a restore
-//! of a criterion gives its requirement a forced revision with the same data, parent, relations
-//! and presence. A later save_object of that requirement in the same write may send the revision
-//! that it read before the write. Each revision above the sent one must be such a forced bump of
-//! an earlier operation of the write. The server then writes the current revision into the
-//! command, so the save checks it as today and the journal stores a current revision. Any other
-//! gap stays stale. A joppa_command has one operation, so only a joppa_batch uses the rule.
-use crate::commands::Command;
+//! The rule of forced bumps (requirement:edit-makes-revision). An operation can give another
+//! node a forced revision with the same data, parent, relations and presence, such as a save of
+//! a criterion for its requirement. A later save_object of that node in the same write may send
+//! the revision that it read before the write. Each revision above the sent one must be such a
+//! forced bump of an earlier operation of the write. The server then writes the current revision
+//! into the command, so the save checks it as today and the journal stores a current revision.
+//! Any other gap stays stale. A joppa_command has one operation, so only a joppa_batch uses the
+//! rule. The rule holds for a node of any type.
 use crate::model::Workspace;
-use crate::objects::{ObjectRevision, address, resolve_address, schema};
+use crate::objects::{ObjectRevision, address, resolve_address};
 use crate::store::Event;
 use serde_json::{Value, json};
 
-/// Write the current revision into a live save_object of a requirement when the gap from the
-/// sent revision has only forced bumps of `events`, the earlier operations of this write.
+/// Write the current revision into a live save_object when the gap from the sent revision has
+/// only forced bumps of `events`, the earlier operations of this write.
 pub fn catch_up(w: &Workspace, value: &mut Value, base_position: u64, events: &[Event]) {
     if value["op"] != "save_object" {
         return;
@@ -27,25 +27,10 @@ pub fn catch_up(w: &Workspace, value: &mut Value, base_position: u64, events: &[
     if sent == 0 || sent >= u64::from(object.current().revision) {
         return;
     }
-    let types = schema(w).types;
-    let role = |kind: &str| types.get(kind).map(|t| t.role.as_str());
-    if role(kind) != Some("requirement") {
-        return;
-    }
-    // The operation at the position saves, archives or restores an object with the role ac.
-    let criterion_write = |position: u64| {
-        let event = events.iter().find(|e| e.position == position);
-        position > base_position
-            && event.is_some_and(|e| match &e.command {
-                Command::SaveObject(op) => role(&op.kind) == Some("ac"),
-                Command::ArchiveObject { target, .. } | Command::RestoreObject { target, .. } => {
-                    let target = w.objects.get(resolve_address(w, target));
-                    target.is_some_and(|o| role(&o.kind) == Some("ac"))
-                }
-                _ => false,
-            })
-    };
-    if let Some(current) = caught_up(&object.revisions, sent, criterion_write) {
+    // The revision at the position comes from an earlier operation of this write.
+    let earlier =
+        |position: u64| position > base_position && events.iter().any(|e| e.position == position);
+    if let Some(current) = caught_up(&object.revisions, sent, earlier) {
         value["revision"] = json!(current);
     }
 }

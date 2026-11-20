@@ -1,5 +1,5 @@
-//! The joppa_objects reads by address (requirement:read-contract): one object, or 2 to 25
-//! objects as items that name their addresses. A current read runs in one snapshot and loads
+//! The joppa_objects reads by address (requirement:read-contract): one object, or 2 to 100
+//! objects as items that name their addresses, with the unknown addresses in `missing`. A current read runs in one snapshot and loads
 //! only the facts that its fields need (store::read_cards). A revision and the history read
 //! one address with the full object read.
 use anyhow::ensure;
@@ -7,7 +7,10 @@ use deadpool_postgres::Pool;
 use joppa::{read_compact as rc, store};
 use serde_json::{Value, json};
 
-/// The addresses of a read: one address, or up to one page of addresses separated by commas.
+/// The most addresses of one read.
+const MANY: usize = 100;
+
+/// The addresses of a read: one address, or up to MANY addresses separated by commas.
 pub(super) fn addresses(value: &Value) -> anyhow::Result<Option<Vec<&str>>> {
     let Some(text) = value.as_str() else {
         return Ok(None);
@@ -17,16 +20,13 @@ pub(super) fn addresses(value: &Value) -> anyhow::Result<Option<Vec<&str>>> {
         list.iter().all(|a| !a.is_empty()),
         "empty address in the address list"
     );
-    ensure!(
-        list.len() <= rc::PAGE,
-        "at most {} addresses in one call",
-        rc::PAGE
-    );
+    ensure!(list.len() <= MANY, "at most {MANY} addresses in one call");
     Ok(Some(list))
 }
 
 /// The read of `addresses`: the object itself for one address, else `{items}` in the order
-/// of the request, each item with its address.
+/// of the request, each item with its address, and `missing` with each unknown address. One
+/// unknown address alone is refused with "unknown object: <address>".
 pub(super) async fn read<'a>(
     pool: &Pool,
     workspace: &str,
@@ -71,8 +71,13 @@ pub(super) async fn read<'a>(
         super::check(fields, true, &[])?;
     }
     let replies = store::read_cards(pool, workspace, actor, addresses, rc::card_needs(fields));
-    let mut items = Vec::with_capacity(addresses.len());
-    for (reply, asked) in replies.await?.into_iter().zip(addresses) {
+    let (found, missing) = replies.await?;
+    if !many && let Some(key) = missing.first() {
+        anyhow::bail!("unknown object: {key}");
+    }
+    let mut items = Vec::with_capacity(found.len());
+    for (asked, reply) in found {
+        let asked = asked.as_str();
         let address = reply["address"].clone();
         let mut item = match fields {
             Some(fields) => {
@@ -90,10 +95,10 @@ pub(super) async fn read<'a>(
         }
         items.push(item);
     }
-    Ok(if many {
-        json!({"items": items})
-    } else {
-        items.remove(0)
+    Ok(match (many, missing.is_empty()) {
+        (true, true) => json!({"items": items}),
+        (true, false) => json!({"items": items, "missing": missing}),
+        (false, _) => items.remove(0),
     })
 }
 

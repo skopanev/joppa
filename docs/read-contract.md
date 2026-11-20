@@ -125,8 +125,10 @@ without such a child has no `child_counts`. The board shows each entry in the ro
 
 Any other first part names a data field: `source_section.title` gives
 `data.source_section.title`, and a bare `tags` gives `data.tags`. An object without that
-field gives null: `["nope"]` gives `"nope": null`. A key of the detail read on a list read
-is refused when no returned document holds it: `unknown field comments`.
+field gives null: `["nope"]` gives `"nope": null`. A list read and an `in_relation` read also
+give `comments`, `comments_count`, `files`, `files_count` and `references`: one batch read of
+the page loads them, only when `fields` names them. Another key of the detail read on a list
+read is refused when no returned document holds it: `unknown field relation_groups`.
 The text of every type is `body`: `description`, `contract`, `data.description` and
 `data.contract` are refused with `use body instead of description; read joppa_help`.
 

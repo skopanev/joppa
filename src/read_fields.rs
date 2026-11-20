@@ -47,6 +47,21 @@ pub const DETAIL_FIELDS: [&str; 13] = [
     "result",
 ];
 
+/// The detail keys that a list read gives too: one batch read of the page loads them, only
+/// when the fields name them.
+pub const LIST_DETAIL_FIELDS: [&str; 5] = [
+    "comments",
+    "comments_count",
+    "files",
+    "files_count",
+    "references",
+];
+
+/// The value of one detail key path of `detail`, or null.
+pub fn detail_value(detail: &Value, field: &str) -> Value {
+    path(detail, field)
+}
+
 /// The first segment of a path.
 pub fn head(field: &str) -> &str {
     field.split('.').next().unwrap_or_default()

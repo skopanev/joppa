@@ -55,16 +55,16 @@ impl CardNeeds {
 /// The document of a card without the document: what the list row gives.
 const ROW_DOCUMENT: &str = "jsonb_build_object('revision',o.revision,'parent',o.parent,'at',o.document_at,'present',o.present,'data',jsonb_build_object('title',o.title,'owner',o.owner,'body',o.description,'status',o.inbox_status))";
 
-/// The current objects at `addresses`, in the order of the request, with the facts of
-/// `needs`. A duplicate address gives the object again, an alias gives its target, and an
-/// unknown address refuses the whole read with `unknown object`.
+/// The current objects at `addresses`, in the order of the request, each with the address that
+/// asked for it, and the facts of `needs`. A duplicate address gives the object again, an alias
+/// gives its target, and each unknown address goes into the second list.
 pub async fn read_cards(
     pool: &Pool,
     workspace: &str,
     actor: &str,
     addresses: &[&str],
     needs: CardNeeds,
-) -> Result<Vec<Value>> {
+) -> Result<(Vec<(String, Value)>, Vec<String>)> {
     let (mut conn, workspace) = authorized(pool, workspace, actor).await?;
     let conn = conn
         .build_transaction()
@@ -102,8 +102,13 @@ pub async fn read_cards(
     let mut items = Vec::with_capacity(rows.len());
     let mut tests = Vec::with_capacity(rows.len());
     let mut types = Vec::with_capacity(rows.len());
-    for row in &rows {
-        let address: String = row.get::<_, Option<String>>(0).context("unknown object")?;
+    let (mut asked, mut missing) = (vec![], vec![]);
+    for (row, wanted) in rows.iter().zip(addresses) {
+        let Some(address) = row.get::<_, Option<String>>(0) else {
+            missing.push((*wanted).to_owned());
+            continue;
+        };
+        asked.push((*wanted).to_owned());
         let parse = |i: usize, empty: Value| -> Result<Value> {
             match row.get::<_, Option<&str>>(i) {
                 Some(text) => Ok(serde_json::from_str(text)?),
@@ -132,5 +137,5 @@ pub async fn read_cards(
     facts::add(&conn, &workspace, actor, &mut items, known, needs).await?;
     // The commit ends the snapshot inside the read, so no ROLLBACK follows it later.
     conn.commit().await?;
-    Ok(items)
+    Ok((asked.into_iter().zip(items).collect(), missing))
 }

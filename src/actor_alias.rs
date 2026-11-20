@@ -12,20 +12,24 @@ pub const HEADER: &str = "x-joppa-alias";
 /// The largest number of characters of an alias.
 pub const MAX: usize = 40;
 
-pub const REFUSAL: &str = "alias has 1 to 40 letters, digits, \"-\", \"_\" or \".\"";
+pub const REFUSAL: &str = "alias has 1 to 40 letters, digits, \"-\", \"_\", \".\" or \"/\", with no \"/\" at the start, at the end or twice in a row";
 
 tokio::task_local! {
     static ALIAS: Option<String>;
 }
 
-/// Refuse an alias with another character, or with too few or too many.
+/// Refuse an alias with another character, or with too few or too many. A "/" separates the
+/// parts of a name, such as crew/p1, so it does not start or end the alias or repeat.
 pub fn validate(alias: &str) -> Result<()> {
     let count = alias.chars().count();
     ensure!(
         (1..=MAX).contains(&count)
             && alias
                 .chars()
-                .all(|c| c.is_alphanumeric() || "-_.".contains(c)),
+                .all(|c| c.is_alphanumeric() || "-_./".contains(c))
+            && !alias.starts_with('/')
+            && !alias.ends_with('/')
+            && !alias.contains("//"),
         REFUSAL
     );
     Ok(())
