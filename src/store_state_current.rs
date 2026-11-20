@@ -26,33 +26,36 @@ pub(crate) async fn current(
         return Ok((Workspace::default(), 0));
     };
     let mut value = serde_json::to_value(Workspace::default())?;
-    let mut unloaded = std::collections::BTreeSet::new();
-    // An object row becomes its object at once, without a JSON value of the whole workspace.
-    let mut objects = std::collections::BTreeMap::new();
+    // The large sections become their maps at once, row by row, without a JSON value of the
+    // whole workspace. Only meta and the small sections fold into `value`.
+    let mut sections = Sections::default();
     crate::probe::count(&crate::probe::STATE_LOADS);
     // The compact inbox types come from the board row once, not once for each row, and the
-    // rows need no order: each one goes into a map.
-    for row in client.query("WITH compact AS MATERIALIZED (SELECT t.key AS kind FROM joppa.board_cache b CROSS JOIN LATERAL jsonb_each(b.first_view->'object_types') t WHERE b.workspace=$1 AND t.value->>'inbox'='true' AND t.value->>'role' IN ('group','document')) SELECT s.section,s.key,(CASE WHEN c.kind IS NOT NULL THEN COALESCE(s.compact,s.value) ELSE s.value END)::text,c.kind IS NOT NULL FROM joppa.state_entries s LEFT JOIN compact c ON s.section='objects' AND c.kind=s.kind WHERE s.workspace=$1", &[&workspace]).await? {
-        let section: String = row.get(0);
-        let key: String = row.get(1);
+    // rows need no order: each one goes into a map. The summaries are not workspace state.
+    let sql = "WITH compact AS MATERIALIZED (SELECT t.key AS kind FROM joppa.board_cache b CROSS JOIN LATERAL jsonb_each(b.first_view->'object_types') t WHERE b.workspace=$1 AND t.value->>'inbox'='true' AND t.value->>'role' IN ('group','document')) SELECT s.section,s.key,(CASE WHEN c.kind IS NOT NULL THEN COALESCE(s.compact,s.value) ELSE s.value END)::text,c.kind IS NOT NULL FROM joppa.state_entries s LEFT JOIN compact c ON s.section='objects' AND c.kind=s.kind WHERE s.workspace=$1 AND s.section<>'summaries'";
+    let rows = client.query_raw(sql, [&workspace]).await?;
+    futures_util::pin_mut!(rows);
+    while let Some(row) = futures_util::TryStreamExt::try_next(&mut rows).await? {
+        let (section, key, text): (&str, String, &str) = (row.get(0), row.get(1), row.get(2));
         if row.get::<_, bool>(3) {
-            unloaded.insert(key.clone());
+            sections.unloaded.insert(key.clone());
         }
-        if section == "objects" {
-            objects.insert(key, serde_json::from_str(row.get(2))?);
-            continue;
+        if !sections.take(section, &key, text)? {
+            fold(&mut value, section, key, serde_json::from_str(text)?);
         }
-        fold(&mut value, &section, key, serde_json::from_str(row.get(2))?);
     }
     let mut state: Workspace = serde_json::from_value(value)?;
-    state.objects = objects;
-    state.unloaded_objects = unloaded;
+    sections.into(&mut state);
     ensure!(
         !state.admin.is_empty(),
         "current projection is missing; run backfill-board"
     );
     Ok((state, position.get::<_, i64>(0) as u64))
 }
+
+#[path = "store_state_sections.rs"]
+mod sections;
+use sections::Sections;
 
 /// The sets of addresses that keep one row for each address, not a list in the meta row.
 const SETS: [&str; 2] = ["document_overrides", "archived_objects"];
@@ -116,9 +119,15 @@ pub(crate) async fn hydrate_objects(
     if addresses.is_empty() {
         return Ok(());
     }
-    for row in client.query("SELECT key,value::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key=ANY($2)", &[&workspace,&addresses]).await? {
-        let key: String=row.get(0);
-        state.objects.insert(key.clone(),serde_json::from_str(row.get(1))?);
+    let sql = "SELECT key,value::text FROM joppa.state_entries WHERE workspace=$1 AND section='objects' AND key=ANY($2)";
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 2] = [&workspace, &addresses];
+    let rows = client.query_raw(sql, params).await?;
+    futures_util::pin_mut!(rows);
+    while let Some(row) = futures_util::TryStreamExt::try_next(&mut rows).await? {
+        let key: String = row.get(0);
+        state
+            .objects
+            .insert(key.clone(), serde_json::from_str(row.get(1))?);
         state.unloaded_objects.remove(&key);
     }
     Ok(())

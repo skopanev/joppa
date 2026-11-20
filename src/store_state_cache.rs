@@ -7,7 +7,9 @@
 //! by another process, another path or by hand gives a new key. The state goes into memory only
 //! after the commit, and a write takes it out first, so
 //! a failed write or a deleted workspace leaves no state. The kept state is the state that a
-//! read of the rows gives: only the last revisions, and compact inbox documents.
+//! read of the rows gives: only the last revisions, and compact inbox documents. The kept states
+//! hold at most CAP objects together: the state used least recently leaves first, and the last
+//! kept state always stays.
 use super::*;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -15,7 +17,56 @@ use std::sync::{LazyLock, Mutex};
 /// The position, and the row version of the board row with the state version.
 type Key = (i64, String);
 
-static STATES: LazyLock<Mutex<HashMap<String, (Key, Workspace)>>> = LazyLock::new(Default::default);
+/// The most objects of the kept states together.
+const CAP: usize = 30_000;
+
+/// The kept states, each with its key and the tick of its last use.
+#[derive(Default)]
+struct Cache {
+    states: HashMap<String, (Key, Workspace, u64)>,
+    tick: u64,
+}
+
+impl Cache {
+    /// The kept state of `workspace`, marked as used now.
+    fn get(&mut self, workspace: &str) -> Option<(Key, Workspace)> {
+        self.tick += 1;
+        let (key, state, used) = self.states.get_mut(workspace)?;
+        *used = self.tick;
+        Some((key.clone(), state.clone()))
+    }
+
+    fn remove(&mut self, workspace: &str) -> Option<(Key, Workspace)> {
+        let (key, state, _) = self.states.remove(workspace)?;
+        Some((key, state))
+    }
+
+    /// Keep the state of `workspace`. The states used least recently leave while the kept
+    /// objects pass CAP, and this state stays.
+    fn insert(&mut self, workspace: String, key: Key, state: Workspace) {
+        self.tick += 1;
+        self.states
+            .insert(workspace.clone(), (key, state, self.tick));
+        let objects = |c: &Cache| {
+            c.states
+                .values()
+                .map(|(_, s, _)| s.objects.len())
+                .sum::<usize>()
+        };
+        while objects(self) > CAP {
+            let oldest = self
+                .states
+                .iter()
+                .filter(|(w, _)| **w != workspace)
+                .min_by_key(|(_, (_, _, used))| *used)
+                .map(|(w, _)| w.clone());
+            let Some(oldest) = oldest else { break };
+            self.states.remove(&oldest);
+        }
+    }
+}
+
+static STATES: LazyLock<Mutex<Cache>> = LazyLock::new(Default::default);
 
 async fn key(client: &impl GenericClient, workspace: &str) -> Result<Option<Key>> {
     let sql = "SELECT b.position,b.xmin::text||':'||COALESCE(v.version,0) FROM joppa.board_cache b LEFT JOIN joppa.state_versions v ON v.workspace=b.workspace WHERE b.workspace=$1";
@@ -43,7 +94,7 @@ pub(super) async fn take(client: &impl GenericClient, workspace: &str) -> Result
 /// is current, else the rows. A search builder calls it under the search lock, so the state
 /// can be older than the next write, never newer than the rows.
 pub(super) async fn read(client: &impl GenericClient, workspace: &str) -> Result<(Workspace, u64)> {
-    let kept = STATES.lock().unwrap().get(workspace).cloned();
+    let kept = STATES.lock().unwrap().get(workspace);
     if let Some((kept_key, state)) = kept
         && let Some(key) = key(client, workspace).await?
         && kept_key == key
@@ -64,7 +115,7 @@ impl Kept {
     /// Keep the state. Call it only after the commit succeeded.
     pub(super) fn keep(self) {
         let mut states = STATES.lock().unwrap();
-        states.insert(self.workspace, (self.key, self.state));
+        states.insert(self.workspace, self.key, self.state);
     }
 }
 
