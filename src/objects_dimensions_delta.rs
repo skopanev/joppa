@@ -69,18 +69,22 @@ pub(in crate::store) async fn update(
     let criteria = super::super::reports::criteria_of(state, &tested);
     let rules = crate::test_rules::rules(state)?;
     let keys: Vec<String> = dimensions.iter().map(|d| d.field.clone()).collect();
-    let (reports, results) =
-        super::super::reports::results_of(client, workspace, &criteria, &keys).await?;
+    let (reports, results) = super::super::reports::results_of(
+        client,
+        workspace,
+        &criteria,
+        &keys,
+        rules.reset_on_change,
+    )
+    .await?;
     let checks = crate::manual_checks::Checks::of(state, &tested);
     let mut tones: BTreeMap<&String, serde_json::Map<String, Value>> = BTreeMap::new();
     for combination in &dims::combinations(&dimensions) {
-        let counted: Vec<_> = results
+        let counted = results
             .iter()
-            .filter(|(_, r)| dims::counts(r.fields.as_ref(), combination))
-            .cloned()
-            .collect();
+            .filter(|(_, r)| dims::counts(r.fields.as_ref(), combination));
         let statuses =
-            super::super::reports::compute(criteria.clone(), &reports, &counted, &rules, &checks)?;
+            super::super::reports::compute(criteria.clone(), &reports, counted, &rules, &checks)?;
         let applies =
             |a: &str| dims::applies(effective.get(a).and_then(Option::as_ref), combination);
         let key = dims::key(combination);

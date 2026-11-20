@@ -33,6 +33,8 @@ mod reports;
 mod reports_cache;
 #[path = "store_reports_details.rs"]
 mod reports_details;
+#[path = "store_reports_prune.rs"]
+mod reports_prune;
 pub use record_results::record_results;
 pub use reports::test_status;
 #[path = "store_head.rs"]

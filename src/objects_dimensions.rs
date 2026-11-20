@@ -44,17 +44,16 @@ pub(in crate::store) async fn project(
     let rules = crate::test_rules::rules(state)?;
     let keys: Vec<String> = dimensions.iter().map(|d| d.field.clone()).collect();
     let (reports, results) =
-        super::reports::results_of(client, workspace, &criteria, &keys).await?;
+        super::reports::results_of(client, workspace, &criteria, &keys, rules.reset_on_change)
+            .await?;
     let checks = crate::manual_checks::Checks::of(state, &tested);
     let mut tones: BTreeMap<String, BTreeMap<String, &'static str>> = BTreeMap::new();
     for combination in &combinations {
-        let counted: Vec<_> = results
+        let counted = results
             .iter()
-            .filter(|(_, r)| dims::counts(r.fields.as_ref(), combination))
-            .cloned()
-            .collect();
+            .filter(|(_, r)| dims::counts(r.fields.as_ref(), combination));
         let statuses =
-            super::reports::compute(criteria.clone(), &reports, &counted, &rules, &checks)?;
+            super::reports::compute(criteria.clone(), &reports, counted, &rules, &checks)?;
         let applies = |a: &str| dims::applies(effective.get(a), combination);
         let shown = Graph {
             kinds: all.kinds.clone(),

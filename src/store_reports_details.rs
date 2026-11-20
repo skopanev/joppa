@@ -26,7 +26,9 @@ pub(super) async fn fill(
         for r in client.query(sql, &[&workspace, &reports, &names]).await? {
             let fields = r.get::<_, Option<String>>(4);
             let fields = fields.and_then(|f| serde_json::from_str(&f).ok());
-            found.insert((r.get(0), r.get(1), r.get(2)), (r.get(3), fields));
+            found
+                .entry((r.get(0), r.get(1), r.get(2)))
+                .or_insert((r.get(3), fields));
         }
     }
     for test in tests_mut(statuses) {

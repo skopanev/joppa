@@ -82,22 +82,25 @@ async fn statuses_for_criteria(
     if criteria.is_empty() {
         return Ok(Default::default());
     }
-    let (reports, results) = results_of(client, workspace, &criteria, &[]).await?;
+    let reset = rules.reset_on_change;
+    let (reports, results) = results_of(client, workspace, &criteria, &[], reset).await?;
     let mut statuses = compute(criteria, &reports, &results, rules, checks)?;
     drop(results);
     super::reports_details::fill(client, workspace, &mut statuses, rules).await?;
     Ok(statuses)
 }
 
-/// The reports of the workspace and the results of the tests of `criteria`. A large workspace
-/// has hundreds of thousands of results, so the rows stream, and each keeps only what decides a
-/// status: the report, the test, the status, the status name and the `keys` of its fields (the
-/// dimensions). reports_details.rs reads the message and the fields of the deciding rows.
+/// The reports of the workspace and the results of the tests of `criteria` that can still decide
+/// a status (reports_prune.rs). A large workspace has hundreds of thousands of results, so the
+/// rows stream, newest first, and each keeps only what decides a status: the report, the test,
+/// the status, the status name and the `keys` of its fields (the dimensions). `reset` is the
+/// reset_on_change rule. reports_details.rs reads the message and the fields of the deciding rows.
 pub(super) async fn results_of(
     client: &impl GenericClient,
     workspace: &str,
     criteria: &[(String, Option<Listed>, Boundary)],
     keys: &[String],
+    reset: bool,
 ) -> Result<(std::sync::Arc<Vec<Report>>, Vec<(i64, TestResult)>)> {
     let tests: std::collections::BTreeSet<String> = criteria
         .iter()
@@ -110,13 +113,18 @@ pub(super) async fn results_of(
     }
     let reports = super::reports_cache::reports(client, workspace).await?;
     let tests: Vec<String> = tests.into_iter().collect();
-    let sql = "SELECT t.report_id,t.address,t.status,t.status_name,CASE WHEN cardinality($3::text[])>0 THEN (SELECT jsonb_object_agg(key,value) FROM jsonb_each(t.fields) WHERE key=ANY($3))::text END FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2)";
+    let sql = "SELECT t.report_id,t.address,t.status,t.status_name,CASE WHEN cardinality($3::text[])>0 THEN (SELECT jsonb_object_agg(key,value) FROM jsonb_each(t.fields) WHERE key=ANY($3))::text END FROM joppa.test_results t JOIN joppa.test_reports r ON r.id=t.report_id WHERE r.workspace=$1 AND r.default_branch AND NOT r.dirty AND t.address=ANY($2) ORDER BY t.report_id DESC";
     let params: [&(dyn tokio_postgres::types::ToSql + Sync); 3] = [&workspace, &tests, &keys];
     let rows = client.query_raw(sql, params).await?;
     futures_util::pin_mut!(rows);
     let mut results = vec![];
+    let mut prune = super::reports_prune::Prune::new(&reports, criteria, reset);
     while let Some(r) = futures_util::TryStreamExt::try_next(&mut rows).await? {
         let fields = r.get::<_, Option<String>>(4);
+        let (report, address, status): (i64, &str, &str) = (r.get(0), r.get(1), r.get(2));
+        if !prune.keep(report, address, fields.as_deref(), status) {
+            continue;
+        }
         let result = TestResult {
             address: r.get(1),
             status: r.get(2),
@@ -127,21 +135,22 @@ pub(super) async fn results_of(
         };
         results.push((r.get(0), result));
     }
+    drop(prune);
     Ok((reports, results))
 }
 
 /// The status of each criterion from loaded reports and results. The manual checks decide a
 /// criterion without test nodes (manual_checks.rs).
-pub(super) fn compute(
+pub(super) fn compute<'a>(
     criteria: Vec<(String, Option<Listed>, Boundary)>,
     reports: &[Report],
-    results: &[(i64, TestResult)],
+    results: impl IntoIterator<Item = &'a (i64, TestResult)>,
     rules: &crate::result_shape::ResultShape,
     checks: &crate::manual_checks::Checks,
 ) -> Result<std::collections::BTreeMap<String, Value>> {
     // Each criterion reads only the results of its own tests. The grouping keeps every row,
-    // duplicates included, and preserves the input order for each address (the query has no
-    // ORDER BY), so a status costs its own results and not every result of the workspace.
+    // duplicates included, and the input order for each address, so a status costs its own
+    // results and not every result of the workspace.
     let mut by_test: std::collections::BTreeMap<&str, Vec<(i64, &TestResult)>> = Default::default();
     for (id, result) in results {
         by_test
