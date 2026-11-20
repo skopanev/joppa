@@ -104,7 +104,7 @@ class PlatformConfig(unittest.TestCase):
             "User": ["joppa"], "Group": ["joppa"], "WorkingDirectory": ["/var/lib/joppa"],
             "EnvironmentFile": ["/etc/joppa/runtime.env", "-/etc/joppa/storage.env", "-/etc/joppa/search.env"],
             "Environment": ["MALLOC_ARENA_MAX=2"], "Restart": ["on-failure"], "RestartSec": ["3"],
-            "MemoryHigh": ["2G"], "MemoryMax": ["3G"], "MemorySwapMax": ["256M"],
+            "MemoryMax": ["3G"], "MemorySwapMax": ["256M"],
             "TasksMax": ["512"],
             "LimitNOFILE": ["8192"],
             "NoNewPrivileges": ["true"],
@@ -114,6 +114,7 @@ class PlatformConfig(unittest.TestCase):
         }
         for key, value in expected.items():
             self.assertEqual(values.get(key), value, key)
+        self.assertNotIn("MemoryHigh", values)
 
     def test_backup_timer_runs_daily_at_03_30_utc(self):
         timer = unit("joppa-backup.timer")
