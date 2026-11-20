@@ -61,7 +61,11 @@ pub(super) async fn add(
 /// The (field, target) pairs of the computed references of `item` of type `kind`.
 fn computed(item: &Value, kind: &Value) -> Vec<(String, String)> {
     let rules = kind["references"].as_object().into_iter().flatten();
-    let data = &item["document"]["data"];
+    let data = if item["document"]["data"].is_object() {
+        &item["document"]["data"]
+    } else {
+        &item["data"]
+    };
     let mut wanted = vec![];
     for (field, _) in rules.filter(|(_, r)| r["from"].is_string()) {
         for target in data[field].as_array().into_iter().flatten() {

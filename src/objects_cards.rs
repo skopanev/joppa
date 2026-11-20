@@ -139,3 +139,35 @@ pub async fn read_cards(
     conn.commit().await?;
     Ok((asked.into_iter().zip(items).collect(), missing))
 }
+
+/// Add the list detail facts (`notes`, `counts`, `references`) to `items` in the same list snapshot.
+pub(super) async fn add_list_facts(
+    conn: &tokio_postgres::Transaction<'_>,
+    workspace: &str,
+    selected: &std::collections::BTreeMap<String, objects::TreeType>,
+    items: &mut [Value],
+    needs: CardNeeds,
+) -> Result<()> {
+    let narrow = CardNeeds {
+        notes: needs.notes,
+        counts: needs.counts,
+        references: needs.references,
+        ..CardNeeds::default()
+    };
+    let tests = vec![Value::Null; items.len()];
+    let types: Vec<Value> = items
+        .iter()
+        .map(|i| {
+            i["kind"]
+                .as_str()
+                .and_then(|k| selected.get(k))
+                .and_then(|t| serde_json::to_value(t).ok())
+                .unwrap_or(Value::Null)
+        })
+        .collect();
+    let known = facts::Known {
+        tests: &tests,
+        types: &types,
+    };
+    facts::add(conn, workspace, "", items, known, narrow).await
+}

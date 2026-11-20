@@ -31,6 +31,7 @@ pub(super) async fn list_rows(
         after_filter,
         order,
         in_relation,
+        needs,
     } = plan;
     let filter = bound.clause_at([3, 4, 11, 12, 13, 14, 15, 16]);
     let f = bound.params();
@@ -118,6 +119,9 @@ pub(super) async fn list_rows(
     }
     // The decoration comes from the status projection of the last write.
     apply_rollups(&*conn, &workspace, &mut items).await?;
+    if needs.notes || needs.counts || needs.references {
+        super::cards::add_list_facts(conn, &workspace, &selected, &mut items, needs).await?;
+    }
     // A dimension value of the data filter gives each row its tone for that combination.
     if let Some(key) = &bound.combination {
         let set: fn(&mut Value, &str) = |item, tone| item["signal"]["tone"] = json!(tone);

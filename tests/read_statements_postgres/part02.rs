@@ -96,15 +96,17 @@ async fn a_read_of_many_addresses_keeps_order_duplicates_aliases_and_unknown_obj
         }
         ensure!(items[0] == items[3], "{reply}");
     }
-    for address in ["ac:c001,ac:nope", "ac:c001,nope:x"] {
-        let reply = w
-            .mcp(&w.bot, "joppa_objects", json!({"address":address}))
-            .await?;
+    for (address, missing) in [("ac:c001,ac:nope", "ac:nope"), ("ac:c001,nope:x", "nope:x")] {
+        let reply = ok(&w, json!({"address": address, "fields": ["title"]})).await?;
         ensure!(
-            reply == Err("unknown object".into()),
-            "{address}: {reply:?}"
+            reply == json!({"items": [{"address": "ac:c001", "title": "C001"}], "missing": [missing]}),
+            "{address}: {reply}"
         );
     }
+    let single = w
+        .mcp(&w.bot, "joppa_objects", json!({"address": "ac:nope"}))
+        .await?;
+    ensure!(single == Err("unknown object: ac:nope".into()), "{single:?}");
     Ok(())
 }
 

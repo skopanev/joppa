@@ -57,11 +57,6 @@ pub const LIST_DETAIL_FIELDS: [&str; 5] = [
     "references",
 ];
 
-/// The value of one detail key path of `detail`, or null.
-pub fn detail_value(detail: &Value, field: &str) -> Value {
-    path(detail, field)
-}
-
 /// The first segment of a path.
 pub fn head(field: &str) -> &str {
     field.split('.').next().unwrap_or_default()
@@ -71,7 +66,10 @@ pub fn head(field: &str) -> &str {
 pub fn needs_data(fields: &[String]) -> bool {
     fields.iter().any(|f| {
         let head = head(f);
-        head == "data" || head == "relations" || !LIST_FIELDS.contains(&head)
+        head == "data"
+            || head == "relations"
+            || head == "references"
+            || (!LIST_FIELDS.contains(&head) && !DETAIL_FIELDS.contains(&head))
     })
 }
 
@@ -105,6 +103,21 @@ pub fn card_needs(fields: Option<&[String]>) -> CardNeeds {
         }
     }
     needs
+}
+
+/// The detail facts (`notes`, `counts`, `references`) that a list read loads for `fields`.
+pub fn list_needs(fields: Option<&[String]>) -> CardNeeds {
+    let wanted: Vec<String> = fields
+        .into_iter()
+        .flatten()
+        .filter(|f| LIST_DETAIL_FIELDS.contains(&head(f)))
+        .cloned()
+        .collect();
+    if wanted.is_empty() {
+        CardNeeds::default()
+    } else {
+        card_needs(Some(&wanted))
+    }
 }
 
 /// Refuse the first path with an older text field or with a detail key that `known` does not

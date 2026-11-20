@@ -13,6 +13,7 @@ pub(super) struct ListPlan<'s> {
     pub(super) order: String,
     /// The relation key of a member read (src/relation_members.rs).
     pub(super) in_relation: Option<&'s str>,
+    pub(super) needs: CardNeeds,
 }
 
 // The body moved from read_objects unchanged, so it keeps `&*conn` on a borrowed transaction.
@@ -25,6 +26,7 @@ pub(super) async fn read_list(
     prefix: String,
     selected: std::collections::BTreeMap<String, objects::TreeType>,
     scope: &ObjectScope<'_>,
+    needs: CardNeeds,
     in_relation: Option<&str>,
 ) -> Result<Value> {
     ensure!(
@@ -132,6 +134,7 @@ pub(super) async fn read_list(
         after_filter,
         order,
         in_relation,
+        needs,
     };
     super::object_list_rows::list_rows(
         conn, workspace, public, position, prefix, selected, scope, plan,

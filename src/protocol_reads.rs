@@ -162,7 +162,8 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         )
         .await;
     }
-    let mut reply = store::read_objects(pool, workspace, actor, &scope(None)).await?;
+    let needs = rc::list_needs(fields.as_deref());
+    let mut reply = store::read_objects_with(pool, workspace, actor, &scope(None), needs).await?;
     // A list in address order gives the bare address of its last item as the cursor,
     // as a plain list does, so one sweep may mix plain pages and pages with fields.
     if !inbox
@@ -178,11 +179,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
         check(fields, false, &data)?;
     }
-    let mut out = rc::list(reply, fields.as_deref());
-    if let Some(fields) = &fields {
-        details::add(pool, workspace, actor, &mut out, fields).await?;
-    }
-    Ok(out)
+    Ok(rc::list(reply, fields.as_deref()))
 }
 
 /// The member read of one relation (src/relation_members.rs), in pages of 25.
@@ -199,20 +196,18 @@ async fn members(
     joppa::relation_members::check_keys(sent)?;
     let limit = joppa::relation_members::page(number(a, "limit")?.map(|n| n as usize));
     let data = fields.as_deref().is_some_and(rc::needs_data);
+    let needs = rc::list_needs(fields.as_deref());
     let cursor = a["cursor"].as_str();
     // Each relations.<key> of fields names a relation of the registry (ac:ig3uv35d).
     let keys = joppa::relation_members::relation_keys(fields.as_deref().unwrap_or_default());
-    let page = (limit, cursor, data, keys.as_slice());
-    let reply = store::relation_members(pool, workspace, actor, key, page).await?;
+    let page = (limit, cursor, data, needs, keys.as_slice());
+    let reply = store::relation_members_with(pool, workspace, actor, key, page).await?;
     if let Some(fields) = &fields {
         let items = reply["items"].as_array().into_iter().flatten();
         let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
         check(fields, false, &data)?;
     }
     let mut reply = rc::list(reply, fields.as_deref());
-    if let Some(fields) = &fields {
-        details::add(pool, workspace, actor, &mut reply, fields).await?;
-    }
     if let Some(items) = reply["items"].as_array_mut() {
         items.iter_mut().for_each(joppa::relation_members::nest);
     }
@@ -221,8 +216,6 @@ async fn members(
 
 #[path = "protocol_reads_address.rs"]
 mod address;
-#[path = "protocol_reads_details.rs"]
-mod details;
 
 /// Refuse an older text field, and a detail key on a list read that no returned document holds.
 /// A read by address (`detail`) takes the detail keys. Each other bare name reads its data field.

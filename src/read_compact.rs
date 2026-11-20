@@ -6,11 +6,11 @@
 use anyhow::Result;
 use serde_json::{Map, Value, json};
 
-pub use crate::read_detail::{detail, detail_keys, headers, revision};
+pub use crate::read_detail::{detail, detail_keys, headers, list_detail, revision};
 #[path = "read_fields.rs"]
 mod fields;
 pub use fields::{
-    DETAIL_FIELDS, LIST_DETAIL_FIELDS, card_needs, check_fields, detail_value, head, needs_data,
+    DETAIL_FIELDS, LIST_DETAIL_FIELDS, card_needs, check_fields, head, list_needs, needs_data,
     object_fields,
 };
 
@@ -43,8 +43,12 @@ pub fn list_item(item: &Value, fields: Option<&[String]>) -> Value {
     out.insert("address".into(), item["address"].clone());
     match fields {
         Some(fields) => {
+            let detail = fields
+                .iter()
+                .any(|f| LIST_DETAIL_FIELDS.contains(&head(f)))
+                .then(|| list_detail(item));
             for field in fields {
-                out.insert(field.clone(), fields::value(item, None, field));
+                out.insert(field.clone(), fields::value(item, detail.as_ref(), field));
             }
         }
         None => {

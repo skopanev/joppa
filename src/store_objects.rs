@@ -9,7 +9,7 @@ mod tree;
 pub use tree::tree_schema;
 #[path = "objects_read.rs"]
 mod object_read;
-pub use object_read::{read_objects, relation_members};
+pub use object_read::{read_objects, read_objects_with, relation_members, relation_members_with};
 #[path = "objects_cards.rs"]
 mod cards;
 pub use cards::{CardNeeds, read_cards};

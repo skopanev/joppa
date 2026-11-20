@@ -7,7 +7,18 @@ pub async fn read_objects(
     actor: &str,
     scope: &ObjectScope<'_>,
 ) -> Result<Value> {
-    read(pool, workspace, actor, scope, None).await
+    read(pool, workspace, actor, scope, CardNeeds::default(), None).await
+}
+
+/// `read_objects` with list detail facts (`notes`, `counts`, `references`) in the same snapshot.
+pub async fn read_objects_with(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    scope: &ObjectScope<'_>,
+    needs: CardNeeds,
+) -> Result<Value> {
+    read(pool, workspace, actor, scope, needs, None).await
 }
 
 /// The members of relation `key` (src/relation_members.rs): at most `limit` present nodes
@@ -21,6 +32,24 @@ pub async fn relation_members(
     key: &str,
     (limit, cursor, data, keys): (usize, Option<&str>, bool, &[String]),
 ) -> Result<Value> {
+    relation_members_with(
+        pool,
+        workspace,
+        actor,
+        key,
+        (limit, cursor, data, CardNeeds::default(), keys),
+    )
+    .await
+}
+
+/// `relation_members` with list detail facts (`notes`, `counts`, `references`) in the same snapshot.
+pub async fn relation_members_with(
+    pool: &Pool,
+    workspace: &str,
+    actor: &str,
+    key: &str,
+    (limit, cursor, data, needs, keys): (usize, Option<&str>, bool, CardNeeds, &[String]),
+) -> Result<Value> {
     ensure!((1..=25).contains(&limit), "limit must be 1 to 25");
     let scope = ObjectScope {
         limit,
@@ -28,7 +57,7 @@ pub async fn relation_members(
         data,
         ..ObjectScope::default()
     };
-    let mut reply = read(pool, workspace, actor, &scope, Some((key, keys))).await?;
+    let mut reply = read(pool, workspace, actor, &scope, needs, Some((key, keys))).await?;
     if let Some((_, address)) = reply["next_cursor"]
         .as_str()
         .and_then(|c| c.split_once(':'))
@@ -44,6 +73,7 @@ async fn read(
     workspace: &str,
     actor: &str,
     scope: &ObjectScope<'_>,
+    needs: CardNeeds,
     member_read: Option<(&str, &[String])>,
 ) -> Result<Value> {
     let in_relation = member_read.map(|(key, _)| key);
@@ -88,6 +118,7 @@ async fn read(
         prefix,
         selected,
         scope,
+        needs,
         in_relation,
     )
     .await?;

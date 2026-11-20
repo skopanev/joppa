@@ -129,6 +129,30 @@ pub fn detail(reply: Value, asked: &str, comments_cursor: Option<&str>) -> Resul
     Ok(reply)
 }
 
+/// The detail keys of one list item when `fields` names `LIST_DETAIL_FIELDS`.
+pub fn list_detail(item: &Value) -> Value {
+    let comments = comment_list(&item["annotations"]["comments"]);
+    let comments = if comments.is_empty() {
+        Value::Null
+    } else {
+        page(comments, None).unwrap_or(Value::Null)
+    };
+    let mut out = json!({
+        "comments": comments,
+        "comments_count": item["comments_count"],
+        "files": item["files"],
+        "files_count": item["files_count"],
+        "references": item["references"],
+    });
+    if let Some(references) = out["references"].as_array_mut() {
+        for r in references.iter_mut().filter(|r| r["present"] == true) {
+            r.as_object_mut().map(|m| m.remove("present"));
+        }
+    }
+    strip_empty(&mut out);
+    out
+}
+
 #[cfg(test)]
 #[path = "read_detail_tests.rs"]
 mod tests;
