@@ -27,15 +27,19 @@ pub(super) async fn with_addresses(
 ) -> anyhow::Result<Value> {
     let mut a = a.clone();
     if a["workspace"].as_str().is_none_or(str::is_empty) {
-        let ids: Vec<String> = keys
-            .iter()
-            .filter_map(|key| a[*key].as_str())
-            .flat_map(|text| text.split(',').map(str::trim))
-            .filter(|key| !key.is_empty() && !key.contains(':') && *key != "*")
-            .map(str::to_owned)
-            .collect();
-        anyhow::ensure!(!ids.is_empty(), "missing workspace");
-        a["workspace"] = json!(store::item_workspace(pool, actor, &ids).await?);
+        if let Some(ws) = joppa::write_key::current() {
+            a["workspace"] = json!(ws);
+        } else {
+            let ids: Vec<String> = keys
+                .iter()
+                .filter_map(|key| a[*key].as_str())
+                .flat_map(|text| text.split(',').map(str::trim))
+                .filter(|key| !key.is_empty() && !key.contains(':') && *key != "*")
+                .map(str::to_owned)
+                .collect();
+            anyhow::ensure!(!ids.is_empty(), "missing workspace");
+            a["workspace"] = json!(store::item_workspace(pool, actor, &ids).await?);
+        }
     }
     let workspace = a["workspace"]
         .as_str()

@@ -108,3 +108,20 @@ pub fn check_fields(command: &Value) -> Result<()> {
     generate(&mut value)?;
     fields(&value)
 }
+
+/// Sync email grants when a command removes a member or changes a member role.
+pub(crate) async fn sync_member_grants(
+    tx: &impl GenericClient,
+    workspace: &str,
+    events: &[Event],
+) -> Result<()> {
+    for event in events {
+        if let Command::RemoveMember { id, .. } = &event.command {
+            tx.execute("DELETE FROM joppa.email_grants g USING joppa.google_identities i WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)", &[&workspace, id]).await?;
+        }
+        if let Command::SetRole { id, role } = &event.command {
+            tx.execute("UPDATE joppa.email_grants g SET role=$3 FROM joppa.google_identities i WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)", &[&workspace, id, role]).await?;
+        }
+    }
+    Ok(())
+}

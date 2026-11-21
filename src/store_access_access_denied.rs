@@ -80,19 +80,25 @@ pub async fn check(
     actor: &str,
     creating: bool,
 ) -> Result<()> {
+    let human_only = match crate::write_key::current() {
+        Some(key_ws) if creating || workspace != key_ws => return Err(AccessDenied.into()),
+        Some(_) => true,
+        None => false,
+    };
     if scope(client, actor)
         .await?
         .is_some_and(|allowed| !allowed.contains(workspace))
     {
         return Err(AccessDenied.into());
     }
-    let row = client
-        .query_one(
-            "SELECT EXISTS(SELECT 1 FROM joppa.workspaces WHERE id=$1), EXISTS(
-         SELECT 1 FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2)",
-            &[&workspace, &actor],
-        )
-        .await?;
+    let sql = if human_only {
+        "SELECT EXISTS(SELECT 1 FROM joppa.workspaces WHERE id=$1), EXISTS(
+         SELECT 1 FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2 AND value='\"human\"'::jsonb)"
+    } else {
+        "SELECT EXISTS(SELECT 1 FROM joppa.workspaces WHERE id=$1), EXISTS(
+         SELECT 1 FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2)"
+    };
+    let row = client.query_one(sql, &[&workspace, &actor]).await?;
     let exists: bool = row.get(0);
     let member: bool = row.get(1);
     if member || (creating && !exists) {

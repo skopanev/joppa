@@ -52,6 +52,7 @@ pub fn legacy() -> ResultShape {
         failure_field: Some("message".into()),
         match_field: None,
         commit_required: None,
+        key_write: false,
     }
 }
 

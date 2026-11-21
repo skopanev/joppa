@@ -114,6 +114,10 @@ pub async fn record_results(
         .map(|text| serde_json::from_str(&text))
         .transpose()?
         .context("the tree schema has no test_results block")?;
+    ensure!(
+        crate::write_key::current().is_none() || shape.key_write,
+        "test_results.key_write is not enabled in the tree schema"
+    );
     // The present objects that each ref field can name.
     let mut refs = Refs::new();
     for field in &shape.fields {

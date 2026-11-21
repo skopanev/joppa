@@ -72,3 +72,37 @@ pub(super) async fn revoke_read_key(
     let actor = member(&app, &headers, true).await?;
     keys_result(store::revoke_read_key(&app.pool, &workspace, &actor).await)
 }
+
+/// `GET /api/workspaces/{workspace}/write-key`: `{"active", "created_at"}` and never the key.
+pub(super) async fn write_key(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = member(&app, &headers, false).await?;
+    keys_result(store::write_key(&app.pool, &workspace, &actor).await)
+}
+
+/// `POST /api/workspaces/{workspace}/write-key`: a new key replaces the previous one. The
+/// reply gives the key once. The server keeps only its digest.
+pub(super) async fn create_write_key(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = member(&app, &headers, true).await?;
+    let key = format!("{}{}", joppa::write_key::KEY_PREFIX, oauth::random());
+    let digest = oauth::hash(&key);
+    let created = store::set_write_key(&app.pool, &workspace, &actor, &digest).await;
+    keys_result(created.map(|created_at| json!({"key": key, "created_at": created_at})))
+}
+
+/// `POST /api/workspaces/{workspace}/write-key/revoke`: the key stops at once.
+pub(super) async fn revoke_write_key(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = member(&app, &headers, true).await?;
+    keys_result(store::revoke_write_key(&app.pool, &workspace, &actor).await)
+}

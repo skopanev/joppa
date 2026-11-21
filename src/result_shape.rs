@@ -59,6 +59,9 @@ pub struct ResultShape {
     /// optional and true by default, so KEYS does not name it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_required: Option<bool>,
+    /// True lets the workspace write key call joppa_record_results.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub key_write: bool,
 }
 
 impl ResultShape {

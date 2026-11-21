@@ -226,6 +226,7 @@ class PlatformConfig(unittest.TestCase):
             for table in target.split(","):
                 grants.setdefault(table.strip(), set()).update(r.strip() for r in rights.split(","))
         self.assertLessEqual({"UPDATE", "DELETE"}, grants.get("joppa.workspace_read_keys", set()))
+        self.assertLessEqual({"UPDATE", "DELETE"}, grants.get("joppa.workspace_write_keys", set()))
         self.assertLessEqual({"SELECT", "INSERT"}, grants.get("ALL TABLES IN SCHEMA joppa", set()))
 
     def test_the_binary_is_rust_2024_axum_0_8_with_embedded_markdown_libraries(self):

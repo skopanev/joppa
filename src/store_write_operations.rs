@@ -23,20 +23,24 @@ pub(crate) async fn write(
     if !allow_workspace_create {
         admit(operations, batch)?;
     }
-    let input = json!({"batch":batch, "operations":operations});
+    let input = if crate::write_key::current().is_some() {
+        json!({"batch":batch, "operations":operations, "write_key":true})
+    } else {
+        json!({"batch":batch, "operations":operations})
+    };
     let name = workspace;
     // The writers of one workspace wait here, so they hold at most 1 connection.
     let _turn = super::writer::turn(name).await;
     let mut conn = pool.get().await?;
     let tx = conn.transaction().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
-    super::remote::lock(&*tx, &workspace).await?;
     // A new workspace has no access-rule entry yet. Only the trusted CLI path
     // may create it; public HTTP/MCP writes always go through access::check.
     let cli_create = allow_workspace_create && operations[0].command["op"] == "workspace";
     if !cli_create {
         access::check(&*tx, &workspace, actor, false).await?;
     }
+    super::remote::lock(&*tx, &workspace).await?;
     ensure!(actor != "joppa-access", "internal enrollment operation");
     super::writer::resolved(name, &workspace);
     if let Some(reply) = receipts::replayed(
@@ -44,6 +48,7 @@ pub(crate) async fn write(
     )
     .await?
     {
+        crate::write_key::check_replayed(&*tx, &workspace, operations).await?;
         return Ok(reply);
     }
     let (mut state, base_position) = super::state_cache::take(&*tx, &workspace).await?;
@@ -52,7 +57,9 @@ pub(crate) async fn write(
         .members
         .get(actor)
         .is_some_and(|r| r == commands::VIEWER)
-        && !operations.iter().all(|o| hides_only(&o.command))
+        && !operations
+            .iter()
+            .all(|o| crate::write_key::hides_only(&o.command))
     {
         return Err(access::ReadOnly.into());
     }
@@ -73,11 +80,13 @@ pub(crate) async fn write(
             crate::save_merge::default_data(&mut value, clean);
             generate_free(&*tx, &workspace, &state, &mut value).await?;
             fields(&value)?;
+            crate::write_key::precheck_raw(&value)?;
             // The journal stores the immutable ID of another workspace, never a name.
             super::remote::canonical_ids(&*tx, &mut value).await?;
             super::public_ids::canonical(&*tx, &workspace, &state, &mut value).await?;
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
+            crate::write_key::check_operation(&state, actor, &value, clean)?;
             // A requirement save after the criterion saves of this batch takes their forced revisions.
             crate::forced_revision::catch_up(&state, &mut value, base_position, &events);
             crate::save_merge::merge(&state, &mut value, clean)?;
@@ -87,11 +96,14 @@ pub(crate) async fn write(
                 let source = crate::objects::resolve_address(&state, target).to_owned();
                 super::remote::check_links(&*tx, &workspace, actor, &source, links).await?;
             }
-            if let Command::SaveObject(crate::commands::SaveObjectOp { data, .. }) = &command
+            if let Command::SaveObject(crate::commands::SaveObjectOp { id, kind, data, .. }) =
+                &command
                 && let Some(child) = data.get("workspace")
             {
                 let child = child.as_str().context("workspace is a workspace ID")?;
-                super::remote::check_child(&*tx, &workspace, actor, child).await?;
+                if crate::write_key::check_child_needed(&state, kind, id, child) {
+                    super::remote::check_child(&*tx, &workspace, actor, child).await?;
+                }
             }
             // Only server code enrolls an agent or a runner; HTTP and MCP writes refuse it.
             ensure!(
@@ -193,17 +205,7 @@ pub(crate) async fn write(
     if base_position == 0 {
         tx.execute("UPDATE joppa.board_cache SET first_view=jsonb_set(first_view,'{legacy_receipts_version}',to_jsonb($2::text)) WHERE workspace=$1", &[&workspace,&LEGACY_RECEIPTS_VERSION]).await?;
     }
-    // A removed member loses the email grant of its Google account in the same transaction: a
-    // refused removal keeps the grant, and a grant never admits a removed member again.
-    for event in &events {
-        if let Command::RemoveMember { id, .. } = &event.command {
-            tx.execute("DELETE FROM joppa.email_grants g USING joppa.google_identities i WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)", &[&workspace, id]).await?;
-        }
-        // A new role of a member is also the role of the email grant of its Google account.
-        if let Command::SetRole { id, role } = &event.command {
-            tx.execute("UPDATE joppa.email_grants g SET role=$3 FROM joppa.google_identities i WHERE g.workspace=$1 AND i.actor=$2 AND g.email=lower(i.email)", &[&workspace, id, role]).await?;
-        }
-    }
+    sync_member_grants(&*tx, &workspace, &events).await?;
     // A deleted workspace leaves the database with every row of it, this request included.
     let purged = events
         .iter()
@@ -236,14 +238,4 @@ pub(crate) async fn write(
     }
     super::search_indexer::wake();
     Ok(result)
-}
-
-/// A command that only sets the hidden flag of the sender: update_workspace with hidden.
-fn hides_only(command: &Value) -> bool {
-    command["op"] == "update_workspace"
-        && command.get("hidden").is_some_and(Value::is_boolean)
-        && command.as_object().is_some_and(|m| {
-            m.iter()
-                .all(|(k, v)| k == "op" || k == "hidden" || v.is_null())
-        })
 }

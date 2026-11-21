@@ -43,8 +43,8 @@ test('settings-in-name-menu-ac2: Settings shows the people of each workspace of 
       await f.page.waitForFunction(() => !document.getElementById('workspace-select').disabled);
       await f.page.waitForLoadState('networkidle');
       f.page.off('request', record);
-      // The page reads the workspaces, the access, the person and the read key of the selection.
-      assert.deepEqual(reads.filter(p => !p.endsWith('/read-key')).sort(), ['/api/access', '/api/me', '/api/workspaces']);
+      // The page reads the workspaces, the access, the person and the keys of the selection.
+      assert.deepEqual(reads.filter(p => !p.endsWith('/read-key') && !p.endsWith('/write-key')).sort(), ['/api/access', '/api/me', '/api/workspaces']);
       await select.selectOption(owned);
       // One list holds the members, then the emails that have not signed in.
       // Maria has a Google identity, so her row shows "name <email>", and her email grant has no second row.

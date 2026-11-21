@@ -40,6 +40,9 @@ pub struct FieldType {
         deserialize_with = "board_flag"
     )]
     pub board: bool,
+    /// True lets the workspace write key save this field on a present object.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub key_write: bool,
 }
 
 /// The board flag: true, or false or null. A refusal names the flag.
@@ -126,6 +129,14 @@ pub fn validate_rule(field: &str, rule: &FieldType) -> Result<()> {
         !matches!(rule.source(), "children" | "links") || rule.kind == "enum" || list_children,
         "{field}: only an enum field takes its value from children or links, and a list field from children"
     );
+    ensure!(
+        !rule.key_write || rule.source() == "own",
+        "{field}: only an own field takes key_write"
+    );
+    ensure!(
+        !rule.key_write || field != "workspace",
+        "workspace cannot take key_write"
+    );
     Ok(())
 }
 
@@ -195,5 +206,36 @@ mod tests {
         let error = serde_json::from_value::<FieldType>(json!({"type":"text","board":"yes"}));
         let error = error.unwrap_err().to_string();
         assert!(error.contains("board"), "{error}");
+    }
+
+    #[test]
+    fn only_an_own_field_takes_key_write_and_false_is_omitted() {
+        let own: FieldType = serde_json::from_value(
+            json!({"type":"enum","values":["todo","done"],"key_write":true}),
+        )
+        .unwrap();
+        validate_rule("stage", &own).unwrap();
+        assert_eq!(serde_json::to_value(&own).unwrap()["key_write"], true);
+        let plain: FieldType =
+            serde_json::from_value(json!({"type":"text","key_write":false})).unwrap();
+        assert_eq!(
+            serde_json::to_value(&plain).unwrap(),
+            json!({"type":"text"})
+        );
+        let computed: FieldType = serde_json::from_value(json!({
+            "type":"enum",
+            "values":["todo","done"],
+            "from":"children",
+            "key_write":true
+        }))
+        .unwrap();
+        let error = validate_rule("stage", &computed).unwrap_err().to_string();
+        assert_eq!(error, "stage: only an own field takes key_write");
+        let ws_field: FieldType =
+            serde_json::from_value(json!({"type":"text","key_write":true})).unwrap();
+        let ws_err = validate_rule("workspace", &ws_field)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(ws_err, "workspace cannot take key_write");
     }
 }

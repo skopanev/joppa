@@ -123,6 +123,11 @@ pub async fn inbox_type(pool: &Pool, workspace: &str, actor: &str, kind: &str) -
 /// The workspace of public item IDs, for a read that names no workspace. Every ID must
 /// belong to one workspace that the actor can read; any other case reads as an unknown object.
 pub async fn item_workspace(pool: &Pool, actor: &str, ids: &[String]) -> Result<String> {
+    if let Some(ws) = crate::write_key::current() {
+        let conn = pool.get().await?;
+        access::check(&**conn, &ws, actor, false).await?;
+        return Ok(ws);
+    }
     let conn = pool.get().await?;
     let rows = conn
         .query(

@@ -214,6 +214,23 @@ section of Settings, with a browser session and no Authorization header:
 These routes need the same-origin `Origin` header for a POST. A request with an
 Authorization header gets 401. A person who is not a human member gets 403.
 
+## Write key
+
+A workspace has 0 or 1 write key. A key is `jpt_` and 64 lowercase hex characters. The server
+keeps only the SHA-256 digest of the key and `created_by`. A human member manages the key in the
+Write key section of Settings, with a browser session and no Authorization header:
+
+- `GET /api/workspaces/{workspace}/write-key` gives `{"active", "created_at"}` and never the key.
+- `POST /api/workspaces/{workspace}/write-key` makes a new key and gives `{"key", "created_at"}` once. The previous key stops at once.
+- `POST /api/workspaces/{workspace}/write-key/revoke` deletes the key and gives `{"active": false}`.
+
+`POST /mcp` with `Authorization: Bearer jpt_...` accesses only the workspace of the key. Every
+other route refuses the key. The key reads its workspace, calls `joppa_record_results` when
+`test_results.key_write` is `true`, and updates present objects with `save_object` when every
+sent `data` field has `key_write: true` in `types.<kind>.fields`. Each write records `created_by`
+as `actor` with the call `alias`. If the key is revoked or `created_by` ceases to be an Editor,
+the key stops at once.
+
 ## Data reads
 
 `POST /api/data` with `Authorization: Bearer jpr_...` reads the workspace of the key. It is

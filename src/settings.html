@@ -48,10 +48,10 @@ try{
 #delete-confirm[hidden]{display:none}
 #delete-references{margin:0 0 .6em;color:var(--text)}
 #delete-references ul{margin:.3em 0;padding-left:1.2em}
-/* The read key row wraps its buttons at a narrow width. The new key shows once. */
-#read-key-actions{flex-wrap:wrap}
-#read-key-actions[hidden],#read-key-secret[hidden]{display:none}
-#read-key-value{flex:1;min-width:0;overflow-wrap:anywhere;user-select:all;font-family:ui-monospace,monospace;font-size:.85em}
+/* The key rows wrap their buttons at a narrow width. A new key shows once. */
+#read-key-actions,#write-key-actions{flex-wrap:wrap}
+#read-key-actions[hidden],#read-key-secret[hidden],#write-key-actions[hidden],#write-key-secret[hidden]{display:none}
+#read-key-value,#write-key-value{flex:1;min-width:0;overflow-wrap:anywhere;user-select:all;font-family:ui-monospace,monospace;font-size:.85em}
 
 .back-link{color:var(--link);text-decoration:none;white-space:nowrap}
 /* Rename and New workspace sit next to the workspace drop-down, as header controls. */
@@ -106,6 +106,18 @@ try{
       <p id="read-key-note" hidden>Copy the key now. The page shows it only once.</p>
       <div id="read-key-secret" class="row" hidden><code id="read-key-value"></code><button id="read-key-copy" type="button">Copy</button></div>
       <p id="read-key-error" role="alert"></p>
+    </section>
+    <section id="write-key-panel" aria-labelledby="write-key-title">
+      <h2 id="write-key-title">Write key</h2>
+      <p>A write key calls <code>POST /mcp</code> for this workspace and writes only what <code>key_write</code> in the schema allows.</p>
+      <div id="write-key-actions" class="row">
+        <button id="write-key-create" type="button" hidden>Create write key</button>
+        <button id="write-key-regenerate" type="button" hidden>Regenerate write key</button>
+        <button id="write-key-revoke" type="button" hidden>Revoke write key</button>
+      </div>
+      <p id="write-key-note" hidden>Copy the key now. The page shows it only once.</p>
+      <div id="write-key-secret" class="row" hidden><code id="write-key-value"></code><button id="write-key-copy" type="button">Copy</button></div>
+      <p id="write-key-error" role="alert"></p>
     </section>
     <section id="people-panel" aria-labelledby="people-title">
       <h2 id="people-title">People</h2>

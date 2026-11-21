@@ -166,6 +166,9 @@ pub mod workspace_prefix;
 #[path = "store_read_keys.rs"]
 mod read_keys;
 pub use read_keys::{read_key, read_key_workspace, revoke_read_key, set_read_key};
+#[path = "store_write_keys.rs"]
+mod write_keys;
+pub use write_keys::{revoke_write_key, set_write_key, write_key, write_key_identity};
 #[path = "store_data.rs"]
 mod data;
 pub use data::read_data;

@@ -91,6 +91,13 @@ async fn owner_manages_workspace_ac3_the_install_role_runs_the_settings_writes()
         store::grant_email(&app, &ws, "owner", "lena@example.org").await?;
         store::set_role(&app, &ws, "owner", None, Some("lena@example.org"), "human").await?;
         store::revoke_email(&app, &ws, "owner", "lena@example.org").await?;
+        // Read and write keys create, replace and revoke as the application role.
+        store::set_read_key(&app, &ws, "owner", &"a".repeat(64)).await?;
+        store::set_read_key(&app, &ws, "owner", &"b".repeat(64)).await?;
+        store::revoke_read_key(&app, &ws, "owner").await?;
+        store::set_write_key(&app, &ws, "owner", &"c".repeat(64)).await?;
+        store::set_write_key(&app, &ws, "owner", &"d".repeat(64)).await?;
+        store::revoke_write_key(&app, &ws, "owner").await?;
         // A redaction rewrites stored revisions of the note.
         execute(&app, &ws, "owner", json!({"op":"save_object","kind":"note","id":"secret","revision":0,"parent":null,"data":{"title":"Secret note","owner":"owner","body":"Token s3cr3t"},"reason":"Save"})).await?;
         execute(&app, &ws, "owner", json!({"op":"redact_object","target":"note:secret","fragment":"s3cr3t","reason":"Remove the secret"})).await?;

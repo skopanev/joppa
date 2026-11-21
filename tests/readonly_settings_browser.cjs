@@ -185,7 +185,7 @@ test('m78flwn8: a Read-only member sees only Hide and New workspace in Settings'
     await page.waitForLoadState('networkidle');
     assert.equal(await page.locator('#hide-workspace').isVisible(), true);
     assert.equal(await page.locator('#create-open').isVisible(), true);
-    for (const sel of ['#rename-open', '#read-key-panel', '#people-panel', '#delete-button']) {
+    for (const sel of ['#rename-open', '#read-key-panel', '#write-key-panel', '#people-panel', '#delete-button']) {
       assert.equal(await page.locator(sel).isVisible(), false, sel + ' should be hidden');
     }
     assert.deepEqual(consoleErrors, []);
@@ -213,6 +213,8 @@ test('m78flwn8: a Read-only member sees only Hide and New workspace in Settings'
       ['/api/workspaces/' + encodeURIComponent(id) + '/delete', undefined],
       ['/api/workspaces/' + encodeURIComponent(id) + '/read-key', undefined],
       ['/api/workspaces/' + encodeURIComponent(id) + '/read-key/revoke', undefined],
+      ['/api/workspaces/' + encodeURIComponent(id) + '/write-key', undefined],
+      ['/api/workspaces/' + encodeURIComponent(id) + '/write-key/revoke', undefined],
       ['/api/email-grants', {workspace: id, email: 'intruder@example.com'}],
       ['/api/domain-grants', {workspace: id, domain: 'intruder.org'}],
       ['/api/access/remove', {workspace: id, member: 'alex'}],

@@ -7,8 +7,12 @@ pub(super) fn routes() -> Router<App> {
     let limit = axum::extract::DefaultBodyLimit::max(joppa::spaces::REQUEST_MAX);
     Router::new().route("/mcp", post(endpoint).layer(limit).get(get_endpoint))
 }
-/// The actor of a call: an OAuth identity or a private service credential.
-async fn identity(app: &App, headers: &HeaderMap) -> std::result::Result<String, Response> {
+/// The actor of a call and the workspace of a write key: an OAuth identity, a workspace write
+/// key, or a private service credential.
+async fn identity(
+    app: &App,
+    headers: &HeaderMap,
+) -> std::result::Result<(String, Option<String>), Response> {
     if headers.contains_key(header::ORIGIN) {
         let origin = headers.get(header::ORIGIN).and_then(|s| s.to_str().ok());
         if origin != app.oauth_origin.as_deref() {
@@ -28,7 +32,22 @@ async fn identity(app: &App, headers: &HeaderMap) -> std::result::Result<String,
     };
     if token.starts_with("jpa_") {
         return match oauth::actor(app, token).await {
-            Ok(Some(a)) => Ok(a),
+            Ok(Some(a)) => Ok((a, None)),
+            Ok(None) => Err(oauth::challenge(app)),
+            Err(_) => Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":"Could not check credentials"})),
+            )
+                .into_response()),
+        };
+    }
+    if token.starts_with(joppa::write_key::KEY_PREFIX) {
+        if !joppa::write_key::is_write_key(token) {
+            return Err(oauth::challenge(app));
+        }
+        let digest = oauth::hash(token);
+        return match store::write_key_identity(&app.pool, &digest).await {
+            Ok(Some((workspace, actor))) => Ok((actor, Some(workspace))),
             Ok(None) => Err(oauth::challenge(app)),
             Err(_) => Err((
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -41,6 +60,7 @@ async fn identity(app: &App, headers: &HeaderMap) -> std::result::Result<String,
     app.identities
         .get(token)
         .cloned()
+        .map(|a| (a, None))
         .ok_or_else(|| oauth::challenge(app))
 }
 async fn get_endpoint(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -54,8 +74,8 @@ async fn endpoint(
     headers: HeaderMap,
     Json(message): Json<Value>,
 ) -> Response {
-    let actor = match identity(&app, &headers).await {
-        Ok(a) => a,
+    let (actor, key_workspace) = match identity(&app, &headers).await {
+        Ok(found) => found,
         Err(e) => return e,
     };
     if message["jsonrpc"] != "2.0" || !message["method"].is_string() || !message.is_object() {
@@ -64,7 +84,8 @@ async fn endpoint(
     let alias = headers
         .get(joppa::actor_alias::HEADER)
         .and_then(|v| v.to_str().ok());
-    match crate::protocol::handle(&app.pool, &actor, &message, app.embedder.as_ref(), alias).await {
+    let work = crate::protocol::handle(&app.pool, &actor, &message, app.embedder.as_ref(), alias);
+    match joppa::write_key::scope(key_workspace, work).await {
         Some(r) => Json(r).into_response(),
         None => StatusCode::ACCEPTED.into_response(),
     }
