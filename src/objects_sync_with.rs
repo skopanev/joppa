@@ -3,6 +3,7 @@ use super::*;
 
 /// `sync` that can leave unchanged sibling criteria of a revised specification alone.
 /// With `force_siblings`, every criterion of the specification gets a new revision.
+/// With `skip_requirements`, requirement objects keep their stored revisions.
 /// `spec_reason` replaces the reason of the new specification revision.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn sync_with(
@@ -11,7 +12,7 @@ pub(crate) fn sync_with(
     command: &Command,
     position: u64,
     at: &str,
-    force_siblings: bool,
+    (force_siblings, skip_requirements): (bool, bool),
     spec_reason: Option<&str>,
     scope: Option<&Scope>,
 ) {
@@ -50,7 +51,12 @@ pub(crate) fn sync_with(
         w.generic_nodes && types.get(kind).is_some_and(|t| t.role == "task")
     };
     for (key, (kind, parent, data)) in &rows {
-        if w.task_process.contains_key(key)
+        let is_requirement = configured
+            .types
+            .get(kind)
+            .is_some_and(|t| t.role == "requirement");
+        if skip_requirements && is_requirement
+            || w.task_process.contains_key(key)
             || generic_task(w, kind)
             || w.document_overrides.contains(key)
             || w.archived_objects.contains(key)
@@ -203,6 +209,10 @@ pub(crate) fn sync_with(
             || roles
                 .get(&obj.kind)
                 .is_some_and(|t| t.role == "ac" || t.role == "requirement"))
+            && !(skip_requirements
+                && roles
+                    .get(&obj.kind)
+                    .is_some_and(|t| t.role == "requirement"))
             && obj.kind != "note"
             && !w.task_process.contains_key(key)
             && !(w.generic_nodes && roles.get(&obj.kind).is_some_and(|t| t.role == "task"))

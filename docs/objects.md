@@ -30,8 +30,9 @@ or `data.contract` is refused: `use body instead of description; read joppa_help
 An AC and a Task can inherit the REQ owner. A Task keeps its assignee separate from
 its owner. A save with `data.decision_required` is refused. Ask an open question with `note`.
 
-A save of a criterion (a type with role `ac`) gives its specification a new revision with the reason
-`Criterion <address> changed: <reason>`. A save of a criterion with another parent moves it.
+A save, move or archive of a criterion (a type with role `ac`) adds no revision to its
+specification, while status rollups, `child_counts` and computed fields update at once. A save of
+a criterion with another parent moves it.
 Process commands keep the document fields. Only test results make a criterion green.
 
 Each type can define a `question`. Read it from `joppa_tree`. The title and body of an object

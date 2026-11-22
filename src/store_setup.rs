@@ -116,6 +116,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/076_record_without_commit.sql"),
         include_str!("../migrations/077_redact_state_revisions.sql"),
         include_str!("../migrations/078_workspace_write_keys.sql"),
+        include_str!("../migrations/079_own_requirement_revisions.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

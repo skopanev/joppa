@@ -28,7 +28,7 @@ pub(super) fn list() -> Vec<Value> {
         ),
         tool(
             "joppa_tree",
-            "Read the workspace schema: types, parents, roles, status rules, questions, references, typed fields, filters, relations and test_results. set_tree_schema with schema.revision changes it: put_types, remove_types, put_relations and remove_relations.",
+            "Read the workspace schema: types, parents, roles, status rules, questions, references, typed fields, filters, relations and test_results. set_tree_schema changes it: put_types, remove_types, put_relations and remove_relations.",
             json!({"workspace":w(),"revision":{"type":"integer","minimum":0,"description":"one schema revision"}}),
             json!(["workspace"]),
         ),
@@ -47,7 +47,7 @@ pub(super) fn list() -> Vec<Value> {
         tool(
             "joppa_history",
             "Read the History of a workspace: one entry for each change, open until a member marks it processed.",
-            json!({"workspace":w(),"limit":{"type":"integer","minimum":1,"maximum":100,"description":"1 to 100, default 25"},"cursor":text(CURSOR),"order":{"type":"string","enum":["oldest","newest"],"description":"default oldest"},"after":{"type":"integer","minimum":0,"description":"only the entries after this position"},"open":{"type":"boolean","description":"only open entries; next_item names the oldest"},"by_alias":text("agent alias"),"op":text("operation"),"kind":text("object type"),"target":text("object address")}),
+            json!({"workspace":w(),"limit":{"type":"integer","minimum":1,"maximum":100,"description":"1 to 100, default 25"},"cursor":text(CURSOR),"order":{"type":"string","enum":["oldest","newest"],"description":"default oldest"},"after":{"type":"integer","minimum":0,"description":"entries after this position"},"open":{"type":"boolean","description":"open entries (next_item names the oldest)"},"by_alias":text("agent alias"),"op":text("operation"),"kind":text("object type"),"target":text("object address"),"under":text("subtree address or item ID")}),
             json!(["workspace"]),
         ),
         tool(

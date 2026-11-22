@@ -79,7 +79,8 @@ for each journal event.
 - `change` is save, move, relations, flow, archive, restore, comment, file, tests, readiness, priority, task, results, planning, member, schema, workspace or other. A move is a save that changes only the parent. A save that changes only the relations is `relations`, and only flow keys `flow`.
 - A record of test results has the change `results` and the address `record/ID`.
 - `order=newest` reads the newest entries first. The default is `oldest`. `after=POSITION` reads only later entries. `open=true` gives only the open entries.
-- `limit` is 1 to 25, default 25; a larger limit is clamped. `total` counts the entries of the read after `after`. `next_item` names the oldest open entry.
+- `by_alias`, `op`, `kind`, `target` and `under` narrow the entries. `under` takes an address, a historical alias or a public item ID and keeps the entries of that node and its descendants at any depth, including archived descendants.
+- `limit` is 1 to 100, default 25. A larger limit is clamped. `total` counts the entries of the read after `after`. `next_item` names the oldest open entry of the workspace.
 - Send `next_cursor` as `cursor` for the next page. The last page has `next_cursor: null`.
 - Members and agents of the workspace read it. Another account gets 404 `Workspace not found`.
 - Over HTTP an entry also has `signal`, the current status of its object.

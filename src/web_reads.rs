@@ -4,6 +4,7 @@ use super::*;
 mod counts;
 #[path = "web_reads_many.rs"]
 mod many;
+pub(super) use many::history;
 
 pub(super) async fn read(
     State(app): State<App>,
@@ -200,26 +201,6 @@ pub(super) async fn objects(
         .map(merged)
         .map(|reply| joppa::read_shapes::keep_item_fields(reply, fields.as_deref())),
     )
-}
-#[derive(Deserialize)]
-pub(super) struct HistoryQuery {
-    limit: Option<i64>,
-    cursor: Option<String>,
-    open: Option<bool>,
-    order: Option<String>,
-    after: Option<i64>,
-}
-/// History: one entry for each journal event, open until a member marks it processed.
-pub(super) async fn history(
-    State(app): State<App>,
-    Path(workspace): Path<String>,
-    Query(q): Query<HistoryQuery>,
-    headers: HeaderMap,
-) -> ApiResult {
-    let actor = authenticate(&app, &headers).await?;
-    let limit = q.limit.unwrap_or(store::HISTORY_LIMIT);
-    let args = serde_json::json!({"limit": limit, "cursor": q.cursor, "open": q.open, "order": q.order, "after": q.after});
-    result(store::read_history(&app.pool, &workspace, &actor, &args).await)
 }
 pub(super) async fn tree_schema(
     State(app): State<App>,

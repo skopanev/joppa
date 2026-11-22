@@ -228,7 +228,8 @@ pub(crate) fn document_parent(w: &Workspace, key: &str) -> Option<Option<String>
 
 /// Replay old commands into the same document ledger. Process evidence stays in its original revision.
 pub fn sync(w: &mut Workspace, actor: &str, command: &Command, position: u64, at: &str) {
-    sync_with(w, actor, command, position, at, true, None, None);
+    let flags = (true, false);
+    sync_with(w, actor, command, position, at, flags, None, None);
 }
 
 /// `sync` with the rows of `scope` only (objects_sync_scope.rs).
@@ -238,5 +239,6 @@ pub(crate) fn sync_scoped(
     (position, at): (u64, &str),
     scope: &Scope,
 ) {
-    sync_with(w, actor, command, position, at, true, None, Some(scope));
+    let flags = (true, false);
+    sync_with(w, actor, command, position, at, flags, None, Some(scope));
 }

@@ -45,6 +45,9 @@ pub(crate) fn typed_save(
         // A criterion save changes only that criterion: its siblings keep their revisions.
         let siblings =
             !criterion || !commands::rule_applies(w, commands::SINGLE_CRITERION_SAVE, position);
+        // From own_requirement_revisions on, a criterion save adds no requirement revision.
+        let own_requirements =
+            criterion && commands::rule_applies(w, commands::OWN_REQUIREMENT_REVISIONS, position);
         // The specification revision names the criterion save that made it.
         let spec_reason = (criterion
             && commands::rule_applies(w, commands::CRITERION_SAVE_REASON, position))
@@ -57,7 +60,7 @@ pub(crate) fn typed_save(
             &cmd,
             position,
             at,
-            siblings,
+            (siblings, own_requirements),
             reason,
             scope.as_ref(),
         );

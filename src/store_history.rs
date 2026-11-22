@@ -4,104 +4,17 @@
 //! A mark adds no journal entry, so History never grows from its own marks.
 use super::*;
 
+#[path = "store_history_filters.rs"]
+mod filters;
 #[path = "store_history_mark.rs"]
 mod mark;
+use filters::{bind_targets, filters, scope};
 pub use mark::mark_history;
 
-/// The largest History page.
+/// The largest default History page.
 pub const HISTORY_LIMIT: i64 = 25;
 /// The largest page of History.
 pub const HISTORY_MAX_LIMIT: i64 = 100;
-
-/// A cursor holds the last position of the page that it continues.
-fn cursor_position(cursor: &str) -> Result<i64> {
-    cursor
-        .strip_prefix('h')
-        .and_then(|n| n.parse().ok())
-        .ok_or_else(|| commands::ClientField("invalid history cursor").into())
-}
-
-fn page_limit(args: &Value) -> Result<i64> {
-    match args.get("limit") {
-        None | Some(Value::Null) => Ok(HISTORY_LIMIT),
-        // A larger limit is clamped to HISTORY_MAX_LIMIT, never refused.
-        Some(value) => value
-            .as_i64()
-            .filter(|n| *n >= 1)
-            .map(|n| n.min(HISTORY_MAX_LIMIT))
-            .ok_or_else(|| commands::ClientField("limit must be a whole number from 1").into()),
-    }
-}
-
-/// One History read: open only or every entry, oldest or newest first, after a position.
-struct Scope {
-    limit: i64,
-    open: bool,
-    newest: bool,
-    after: i64,
-    cursor: Option<i64>,
-    /// The entries of one alias, operation, object type or object only.
-    alias: Option<String>,
-    op: Option<String>,
-    kind: Option<String>,
-    target: Option<String>,
-}
-
-/// The object of an event: the saved node of save_object, else the target. An old alias reads
-/// as its node.
-const TARGET: &str = "COALESCE((SELECT a.target FROM joppa.object_aliases a WHERE a.workspace=e.workspace AND a.address=COALESCE(CASE WHEN e.command->>'op'='save_object' THEN (e.command->>'kind')||':'||(e.command->>'id') END,e.command->>'target')),CASE WHEN e.command->>'op'='save_object' THEN (e.command->>'kind')||':'||(e.command->>'id') END,e.command->>'target')";
-
-/// The conditions of the entry filters, on the parameters `$first` to `$first+3`.
-fn filters(first: usize) -> String {
-    let [a, o, k, t] = [first, first + 1, first + 2, first + 3].map(|n| format!("${n}"));
-    format!(
-        "({a}::text IS NULL OR e.alias={a}) AND ({o}::text IS NULL OR e.command->>'op'={o}) AND ({k}::text IS NULL OR split_part({TARGET},':',1)={k}) AND ({t}::text IS NULL OR {TARGET}=COALESCE((SELECT x.target FROM joppa.object_aliases x WHERE x.workspace=e.workspace AND x.address={t}),{t}))"
-    )
-}
-
-fn scope(args: &Value) -> Result<Scope> {
-    let open = match args.get("open") {
-        None | Some(Value::Null) => false,
-        Some(value) => value
-            .as_bool()
-            .ok_or(commands::ClientField("open must be true or false"))?,
-    };
-    let newest = match args.get("order").and_then(Value::as_str) {
-        None | Some("oldest") => false,
-        Some("newest") => true,
-        Some(_) => return Err(commands::ClientField("order must be oldest or newest").into()),
-    };
-    let after = match args.get("after") {
-        None | Some(Value::Null) => 0,
-        Some(value) => value
-            .as_i64()
-            .filter(|n| *n >= 0)
-            .ok_or(commands::ClientField("after must be a whole number"))?,
-    };
-    let cursor = args
-        .get("cursor")
-        .and_then(Value::as_str)
-        .map(cursor_position)
-        .transpose()?;
-    let text = |name: &str| match args.get(name) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(s)) if !s.is_empty() => Ok(Some(s.clone())),
-        Some(_) => Err(commands::ClientField(
-            "a History filter is a non-empty text",
-        )),
-    };
-    Ok(Scope {
-        limit: page_limit(args)?,
-        open,
-        newest,
-        after,
-        cursor,
-        alias: text("by_alias")?,
-        op: text("op")?,
-        kind: text("kind")?,
-        target: text("target")?,
-    })
-}
 
 /// Read one page of History. One read transaction gives the page, its items and the current
 /// status of each object.
@@ -143,26 +56,61 @@ async fn read(
         .start()
         .await?;
     let (public, position) = super::head(&*conn, &id).await?;
-    // Oldest first continues after the cursor; newest first continues before it.
+    let (target, under) = bind_targets(&*conn, &id, &s).await?;
+    // Oldest first continues after the cursor. Newest first continues before it.
     let (low, high) = match (s.cursor, s.newest) {
         (Some(p), false) => (s.after.max(p), i64::MAX),
         (Some(p), true) => (s.after, p - 1),
         (None, _) => (s.after, i64::MAX),
     };
     let order = if s.newest { "DESC" } else { "ASC" };
-    let rows = conn.query(
-        &format!("SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text, e.alias, m.alias AS mark_alias FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND e.position<=$3 AND (NOT $4 OR m.position IS NULL) AND {} ORDER BY e.position {order} LIMIT $5", filters(6)),
-        &[&id, &low, &high, &s.open, &(s.limit + 1), &s.alias, &s.op, &s.kind, &s.target],
-    ).await?;
-    let next_item: Option<i64> = conn.query_one(
-        "SELECT min(e.position) FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS (SELECT 1 FROM joppa.history_marks m WHERE m.workspace=e.workspace AND m.position=e.position)",
-        &[&id],
-    ).await?.get(0);
+    let rows = conn
+        .query(
+            &format!(
+                "SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text, e.alias, m.alias AS mark_alias FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND e.position<=$3 AND (NOT $4 OR m.position IS NULL) AND {} ORDER BY e.position {order} LIMIT $5",
+                filters(6)
+            ),
+            &[
+                &id,
+                &low,
+                &high,
+                &s.open,
+                &(s.limit + 1),
+                &s.alias,
+                &s.op,
+                &s.kind,
+                &target,
+                &under,
+            ],
+        )
+        .await?;
+    let next_item: Option<i64> = conn
+        .query_one(
+            "SELECT min(e.position) FROM joppa.events e WHERE e.workspace=$1 AND NOT EXISTS (SELECT 1 FROM joppa.history_marks m WHERE m.workspace=e.workspace AND m.position=e.position)",
+            &[&id],
+        )
+        .await?
+        .get(0);
     // `total` counts every entry of the read after `after`, also the entries before the cursor.
-    let total: i64 = conn.query_one(
-        &format!("SELECT count(*) FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND (NOT $3 OR m.position IS NULL) AND {}", filters(4)),
-        &[&id, &s.after, &s.open, &s.alias, &s.op, &s.kind, &s.target],
-    ).await?.get(0);
+    let total: i64 = conn
+        .query_one(
+            &format!(
+                "SELECT count(*) FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND (NOT $3 OR m.position IS NULL) AND {}",
+                filters(4)
+            ),
+            &[
+                &id,
+                &s.after,
+                &s.open,
+                &s.alias,
+                &s.op,
+                &s.kind,
+                &target,
+                &under,
+            ],
+        )
+        .await?
+        .get(0);
     let more = rows.len() as i64 > s.limit;
     let rows = &rows[..rows.len().min(s.limit as usize)];
     let mut items = super::history_items::items(&*conn, &id, rows).await?;
@@ -222,6 +170,8 @@ async fn read(
     }))
 }
 
+#[cfg(test)]
+use filters::page_limit;
 #[cfg(test)]
 use mark::parse_mark;
 

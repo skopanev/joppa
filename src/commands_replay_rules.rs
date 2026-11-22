@@ -58,7 +58,12 @@ pub const OWN_ALIAS: &str = "own_alias";
 /// and live files resets nothing. An older save resets for any new data value in a replay.
 pub const CONTRACT_ONLY_RESET: &str = "contract_only_reset";
 
-pub const REPLAY_RULES: [&str; 14] = [
+/// From this rule on, a requirement node gets a new revision only when its own data, parent,
+/// relations or presence changes. A save or move of a child criterion adds no forced revision to
+/// any requirement. An older criterion save keeps its forced requirement revision in a replay.
+pub const OWN_REQUIREMENT_REVISIONS: &str = "own_requirement_revisions";
+
+pub const REPLAY_RULES: [&str; 15] = [
     RESET_CHANGED,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
@@ -73,6 +78,7 @@ pub const REPLAY_RULES: [&str; 14] = [
     HUMAN_MEMBER_RIGHTS,
     OWN_ALIAS,
     CONTRACT_ONLY_RESET,
+    OWN_REQUIREMENT_REVISIONS,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

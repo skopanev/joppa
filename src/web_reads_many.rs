@@ -47,3 +47,33 @@ pub(super) async fn read(
     }
     Ok(json!({"items": items}))
 }
+
+#[derive(Deserialize)]
+pub(in crate::web) struct HistoryQuery {
+    limit: Option<i64>,
+    cursor: Option<String>,
+    open: Option<bool>,
+    order: Option<String>,
+    after: Option<i64>,
+    by_alias: Option<String>,
+    op: Option<String>,
+    kind: Option<String>,
+    target: Option<String>,
+    under: Option<String>,
+}
+
+/// History: one entry for each journal event, open until a member marks it processed.
+pub(in crate::web) async fn history(
+    State(app): State<App>,
+    Path(workspace): Path<String>,
+    Query(q): Query<HistoryQuery>,
+    headers: HeaderMap,
+) -> ApiResult {
+    let actor = authenticate(&app, &headers).await?;
+    let limit = q.limit.unwrap_or(store::HISTORY_LIMIT);
+    let args = serde_json::json!({
+        "limit": limit, "cursor": q.cursor, "open": q.open, "order": q.order, "after": q.after,
+        "by_alias": q.by_alias, "op": q.op, "kind": q.kind, "target": q.target, "under": q.under,
+    });
+    result(store::read_history(&app.pool, &workspace, &actor, &args).await)
+}

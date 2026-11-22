@@ -291,38 +291,44 @@ async fn batch_save_catches_up_forced_revision_on_any_type_and_refuses_data_gap(
     .await?
     .map_err(anyhow::Error::msg)?;
 
-    // Create kr:k at revision 1, bump to 2 and 3 so it stands at revision 3.
-    for (rev, title) in [(0, "K1"), (1, "K2"), (2, "K3")] {
+    w.command(
+        &w.bot,
+        json!({"op": "save_object", "kind": "kr", "id": "k", "revision": 0, "parent": null, "data": {"title": "K1", "owner": "owner", "body": "Goal"}, "reason": "Seed parent"}),
+    )
+    .await?
+    .map_err(anyhow::Error::msg)?;
+    // Create proj:p1 at revision 1, bump to 2 and 3 so node N (proj:p1) stands at revision 3.
+    for (rev, title) in [(0, "P1"), (1, "P2"), (2, "P3")] {
         w.command(
             &w.bot,
-            json!({"op": "save_object", "kind": "kr", "id": "k", "revision": rev, "parent": null, "data": {"title": title, "owner": "owner", "body": "Goal"}, "reason": "Step"}),
+            json!({"op": "save_object", "kind": "proj", "id": "p1", "revision": rev, "parent": "kr:k", "data": {"title": title, "owner": "owner"}, "reason": "Step"}),
         )
         .await?
         .map_err(anyhow::Error::msg)?;
     }
-    ensure!(w.object("kr:k").await?["revision"] == 3);
+    ensure!(w.object("proj:p1").await?["revision"] == 3);
 
-    // Saving proj:p1 under kr:k forces kr:k to revision 4; saving kr:k with sent revision 3 in the same batch catches up.
+    // Saving kr:k forces proj:p1 to revision 4. Saving proj:p1 with sent revision 3 in the same batch catches up to 5.
     let good = json!({
         "request_id": "forced-any-good",
         "operations": [
-            {"command": {"op": "save_object", "kind": "proj", "id": "p1", "revision": 0, "parent": "kr:k", "data": {"title": "P1", "owner": "owner"}, "reason": "Child save"}},
-            {"command": {"op": "save_object", "kind": "kr", "id": "k", "revision": 3, "parent": null, "data": {"title": "K-final", "owner": "owner", "body": "Goal"}, "reason": "Parent save"}}
+            {"command": {"op": "save_object", "kind": "kr", "id": "k", "revision": 1, "parent": null, "data": {"title": "K2", "owner": "owner", "body": "Goal"}, "reason": "Parent save"}},
+            {"command": {"op": "save_object", "kind": "proj", "id": "p1", "revision": 3, "parent": "kr:k", "data": {"title": "P-final", "owner": "owner"}, "reason": "Child save"}}
         ]
     });
     ok(&w, "joppa_batch", good).await?;
-    let k = w.object("kr:k").await?;
+    let p1 = w.object("proj:p1").await?;
     ensure!(
-        k["revision"] == 5 && k["data"]["title"] == "K-final",
-        "{k}"
+        p1["revision"] == 5 && p1["data"]["title"] == "P-final",
+        "{p1}"
     );
 
-    // A batch whose first op changes kr:k data and whose second op reuses revision 5 must fail as stale.
+    // A batch whose first op changes proj:p1 data and whose second op reuses revision 5 is refused as stale.
     let stale = json!({
         "request_id": "forced-any-stale",
         "operations": [
-            {"command": {"op": "save_object", "kind": "kr", "id": "k", "revision": 5, "parent": null, "data": {"title": "Changed", "owner": "owner", "body": "Goal"}, "reason": "Mutate"}},
-            {"command": {"op": "save_object", "kind": "kr", "id": "k", "revision": 5, "parent": null, "data": {"title": "Stale", "owner": "owner", "body": "Goal"}, "reason": "Reuse"}}
+            {"command": {"op": "save_object", "kind": "proj", "id": "p1", "revision": 5, "parent": "kr:k", "data": {"title": "Changed", "owner": "owner"}, "reason": "Mutate"}},
+            {"command": {"op": "save_object", "kind": "proj", "id": "p1", "revision": 5, "parent": "kr:k", "data": {"title": "Stale", "owner": "owner"}, "reason": "Reuse"}}
         ]
     });
     let err = w.mcp(&w.bot, "joppa_batch", stale).await?;
@@ -330,6 +336,6 @@ async fn batch_save_catches_up_forced_revision_on_any_type_and_refuses_data_gap(
         err.as_ref().is_err_and(|e| e.contains("stale")),
         "{err:?}"
     );
-    ensure!(w.object("kr:k").await?["data"]["title"] == "K-final");
+    ensure!(w.object("proj:p1").await?["data"]["title"] == "P-final");
     Ok(())
 }
