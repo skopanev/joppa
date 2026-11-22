@@ -88,6 +88,7 @@ async fn call(
     let field = |k: &str| a[k].as_str().ok_or_else(|| anyhow::anyhow!("missing {k}"));
     let name = msg["params"]["name"].as_str().unwrap_or("");
     joppa::write_key::check_tool(name, a)?;
+    schemas::check_arguments(name, a)?;
     // requirement:read-contract: the compact read shape.
     if name == "joppa_objects" {
         return reads::compact(pool, actor, name, a).await;

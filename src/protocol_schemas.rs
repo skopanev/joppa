@@ -50,7 +50,7 @@ pub(super) fn objects() -> Value {
             "workspace": text("key or alias; optional with a public item ID"),
             "address": text("1 to 100 comma-separated addresses or public item IDs"),
             "fields": {"type":"array","items":{"type":"string"},
-                "description":"keys to return, on a list and on an address read: title, body, status, children, relations, comments, files, child_counts, references or a data name"},
+                "description":"keys to return, on a list and on an address read: title, revision, body, status, children, relations, comments, files, child_counts, references or a data name"},
             "limit": {"type":"integer","minimum":1,"maximum":100,
                 "description":"items in a page: 1 to 25, or 1 to 100 with fields"},
             "cursor": text(CURSOR),
@@ -87,4 +87,32 @@ pub(super) fn search() -> Value {
         }),
         false,
     )
+}
+
+/// Refuse an argument outside `inputSchema.properties` of `name`. Known removed or server-owned
+/// keys pass through so their dedicated error messages stay intact.
+pub(super) fn check_arguments(name: &str, a: &Value) -> anyhow::Result<()> {
+    let Some(tool) = super::tools::list()
+        .into_iter()
+        .find(|t| t["name"].as_str() == Some(name))
+    else {
+        return Ok(());
+    };
+    let map = match a {
+        Value::Null => return Ok(()),
+        Value::Object(map) => map,
+        _ => anyhow::bail!("arguments must be a JSON object"),
+    };
+    let props = tool["inputSchema"]["properties"].as_object();
+    for key in map.keys() {
+        let custom = matches!(key.as_str(), "actor" | "at")
+            || matches!(
+                (name, key.as_str()),
+                ("joppa_objects", "work_filter" | "links_of" | "ready") | ("joppa_search", "ready")
+            );
+        if !custom && !props.is_some_and(|p| p.contains_key(key)) {
+            anyhow::bail!("unknown argument `{key}`");
+        }
+    }
+    Ok(())
 }

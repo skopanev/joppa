@@ -33,19 +33,18 @@ pub fn restore(
         "object was not archived with archive_object"
     );
 
-    let kind = &old.kind;
-    ensure!(
-        schema(w)
-            .types
-            .get(kind)
-            .is_some_and(|t| ["group", "document"].contains(&t.role.as_str())),
-        "restore_object requires a group or document"
-    );
+    let kind = old.kind.clone();
+    let role = schema(w)
+        .types
+        .get(&kind)
+        .context("unknown object type")?
+        .role
+        .clone();
 
     parent_valid(
         &schema(w).types,
         w,
-        kind,
+        &kind,
         old.current().parent.as_deref(),
         Some(&target),
     )?;
@@ -64,9 +63,43 @@ pub fn restore(
         next.alias = w.alias.clone();
     }
 
+    let restored_owner = next.data["owner"].as_str().map(str::to_owned);
     std::sync::Arc::make_mut(w.objects.get_mut(&target).unwrap())
         .revisions
         .push(next);
     std::sync::Arc::make_mut(&mut w.archived_objects).remove(&target);
+    if role == "ac" && !w.document_overrides.contains(&target) {
+        align_restored_criterion(w, &target, restored_owner.as_deref());
+    }
+    if !["group", "document"].contains(&role.as_str()) && !input_type(w, &kind) {
+        reset_criteria(w, &target, at)?;
+    }
     Ok(())
+}
+
+/// Keep a restored criterion aligned with `w.requirements` when its parent requirement changed
+/// owner while the criterion was archived.
+fn align_restored_criterion(w: &mut Workspace, target: &str, owner: Option<&str>) {
+    let found = criterion_context(w, target).map(|(req, _, ac)| (req.to_owned(), ac.id.clone()));
+    let Some((req, ac_id)) = found else {
+        std::sync::Arc::make_mut(&mut w.document_overrides).insert(target.to_owned());
+        return;
+    };
+    let Some(owner) = owner else {
+        return;
+    };
+    if let Some(q) = w.requirements.get_mut(&req)
+        && let Some(last) = q.revisions.last()
+        && last
+            .acs
+            .iter()
+            .any(|a| a.id == ac_id && a.owner.as_deref().unwrap_or(&last.owner) != owner)
+    {
+        let mut next_r = last.clone();
+        next_r.number += 1;
+        if let Some(ac) = next_r.acs.iter_mut().find(|a| a.id == ac_id) {
+            ac.owner = Some(owner.to_owned());
+        }
+        std::sync::Arc::make_mut(q).revisions.push(next_r);
+    }
 }

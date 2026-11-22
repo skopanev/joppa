@@ -170,7 +170,7 @@ async fn viewer_writes_nothing_over_mcp() -> Result<()> {
         .await?
         .get(0);
     let open = w
-        .mcp(&w.bot, "joppa_history", json!({"unprocessed":true}))
+        .mcp(&w.bot, "joppa_history", json!({"open":true}))
         .await?
         .map_err(anyhow::Error::msg)?;
     let open_pos = open["items"][0]["position"].as_i64().context("open pos")?;

@@ -80,11 +80,13 @@ pub(crate) fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
         "workspace creation is available only through the server CLI"
     );
     for (index, operation) in operations.iter().enumerate() {
-        let admitted = match op(operation) {
-            Some(name) if crate::removed_ops::NAMES.contains(&name) => {
+        let admitted = match operation.command.get("op") {
+            None | Some(Value::Null) => Err(anyhow::anyhow!("missing field `op`")),
+            Some(Value::String(s)) if s.is_empty() => Err(anyhow::anyhow!("missing field `op`")),
+            Some(Value::String(name)) if crate::removed_ops::NAMES.contains(&name.as_str()) => {
                 Err(anyhow::anyhow!(crate::removed_ops::refusal(name)))
             }
-            Some(name) if commands::operation(name).is_some() => Ok(()),
+            Some(Value::String(name)) if commands::operation(name).is_some() => Ok(()),
             _ => Err(anyhow::anyhow!("unknown operation")),
         };
         if batch {

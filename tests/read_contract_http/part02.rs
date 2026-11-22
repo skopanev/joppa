@@ -134,11 +134,12 @@ async fn empty_keys_and_item_ids_go_and_tests_read_by_kind() -> Result<()> {
             "joppa_objects",
             json!({"address":"ac:a","verbose":true}),
         )
-        .await?
-        .map_err(anyhow::Error::msg)?;
+        .await?;
     ensure!(
-        verbose.get("signal").is_none(),
-        "verbose still works: {verbose}"
+        verbose
+            .as_ref()
+            .is_err_and(|e| e.contains("unknown argument `verbose`")),
+        "verbose must be refused: {verbose:?}"
     );
     // Criterion B has no child, so its list is empty.
     let empty = read(&w, "joppa_objects", json!({"parent":"ac:b"})).await?;

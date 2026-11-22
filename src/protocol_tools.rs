@@ -42,7 +42,7 @@ pub(super) fn list() -> Vec<Value> {
             "joppa_record_results",
             "Record the test results of one commit. Name each test by test:<id> or its public item ID: it binds that one node. A title binds every present test node with that title. The latest record decides a test. The reply gives unbound: the tests with no present test node. unbound does not check under which criterion a test node stands. A full-run record needs unbound: [] before a merge.",
             json!({"workspace":w(),"commit":text("lowercase git sha"),"results":{"type":"array","minItems":1,"description":"[{test, status, ...fields}]","items":{"type":"object","properties":{"test":text("test:<id>, a public item ID or a title"),"status":text("a test_results status of joppa_tree")},"required":["test","status"]}}}),
-            json!(["workspace", "commit", "results"]),
+            json!(["workspace", "results"]),
         ),
         tool(
             "joppa_history",
