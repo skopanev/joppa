@@ -4,8 +4,8 @@
 //   over its two nodes.
 // - A node label wraps by words into at most 3 lines (wrapLabel of flow-layout.js). The dot
 //   title keeps the full label.
-// - The condition `when` of an edge stands in one line on the first part of the edge, and
-//   touches no other condition. Every label shows.
+// - The condition `when` of an edge wraps by words into at most 3 lines of 28 characters on
+//   the first part of the edge, and touches no other condition. Every label shows.
 // - Under the label of a node, one transfer badge names each other relation of the node.
 // - A coloured edge (flow-color.js) has its stroke and an arrow head marker of its colour. An
 //   uncoloured edge keeps the shared marker #flow-arrow.
@@ -76,11 +76,12 @@ export function drawFlow(holder,nodes,edges,on){
     element.dataset.from=edge.from;element.dataset.to=edge.to;lines.append(element);
     return {...edge,element,label:null,mid};
   });
-  // A condition stands 6 above the middle of the first part of its edge, and then moves apart
-  // from the earlier conditions (apartWhens of flow-layout.js).
-  const asked=drawn.filter(e=>e.when);
-  apartWhens(asked.map(e=>({x:e.mid.x,y:e.mid.y-6,text:short(e.when)}))).forEach((place,i)=>{
-    const label=svg('text',{x:at(place.x),y:at(place.y)},'flow-when');label.textContent=place.text;
+  // A condition stands 6 above the middle of the first part of its edge, wraps by words into at
+  // most 3 lines, and then moves apart from the earlier conditions (apartWhens of flow-layout.js).
+  const asked=drawn.filter(e=>e.when?.trim());
+  apartWhens(asked.map(e=>({x:e.mid.x,y:e.mid.y-6,text:e.when}))).forEach((place,i)=>{
+    const label=svg('text',{x:at(place.x),y:at(place.y)},'flow-when');
+    label.append(...place.rows.map((row,j)=>{const line=svg('tspan',{x:at(place.x),...(j?{dy:LINE_HEIGHT+'em'}:{})});line.textContent=row;return line;}));
     whens.append(label);asked[i].label=label;
   });
   holder.prepend(canvas);
@@ -110,8 +111,6 @@ function arc(a,b){
   const d=`M${at(a.x)} ${at(sy)}C${at(a.x+spread)} ${at(top)} ${at(b.x-spread)} ${at(top)} ${at(b.x)} ${at(ey)}`;
   return {d,mid:{x:(a.x+b.x)/2,y:(sy+ey+6*top)/8}};
 }
-// The one line of an edge condition.
-function short(text){return text.length>36?text.slice(0,35)+'…':text;}
 function pointer(canvas,camera,on){
   let drag=null;
   canvas.addEventListener('pointerdown',event=>{

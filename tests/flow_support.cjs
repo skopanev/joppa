@@ -102,8 +102,10 @@ function snapshot() {
     const edge = edges.reduce((best, e) => gap(e) < gap(best) ? e : best, edges[0]);
     // The anchor (ax, ay) is the x and y of the text in the drawing.
     const t = w.matches('text') ? w : w.querySelector('text') || w, at = list => list?.numberOfItems ? list.getItem(0).value : 0;
+    const spans = [...w.querySelectorAll('tspan')], lines = spans.length ? spans.map(s => s.textContent) : [w.textContent.trim()];
     const anchor = t.getScreenCTM ? new DOMPoint(at(t.x?.baseVal), at(t.y?.baseVal)).matrixTransform(t.getScreenCTM()).matrixTransform(inverse) : {x: null, y: null};
-    return {text: w.textContent.trim(), shown: shown(w), edge: edge && edge.from + '>' + edge.to, spans: w.querySelectorAll('tspan').length,
+    return {text: lines.join(' '), lines, boxes: spans.length ? spans.map(rect) : [rect(w)], xs: spans.map(lineX),
+      shown: shown(w), edge: edge && edge.from + '>' + edge.to, spans: spans.length,
       height: b.height, x, y, box: rect(w), ax: anchor.x, ay: anchor.y};
   });
   const badges = [...document.querySelectorAll('.flow-transfer')].map(b => ({address: address(b), text: b.textContent.trim(), box: rect(b)}));

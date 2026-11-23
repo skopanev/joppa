@@ -89,10 +89,96 @@ test('flow-label-space: labels and transfer badges never touch', async () => {
     // The rows of one column are 140 apart in the drawing.
     const gap = at['step:c'].dy - at['step:b'].dy;
     assert.ok(Math.abs(gap - 140) < 0.5, 'B and C are 140 apart: ' + gap);
-    // The when label keeps one line: no more than one <tspan>, and no higher than two lines of C.
+    // The 29-character when label wraps into 2 <tspan> lines and touches no node label.
     const label = s.whens.find(w => w.edge === 'step:a>step:b');
     assert.ok(label, 'A→B has its when label: ' + JSON.stringify(s.whens));
-    const line = at['step:c'].label.boxes[0].bottom - at['step:c'].label.boxes[0].top;
-    assert.ok(label.spans <= 1 && label.height < 2 * line, 'the when label keeps one line: ' + JSON.stringify([label, line]));
+    assert.deepEqual(label.lines, ['the limit of the client is', 'ok']);
+    assert.equal(label.spans, 2);
+    for (const n of s.nodes) assert.ok(!overlap(label.box, n.label.box), 'when does not touch ' + n.address + ' label');
+  } finally { await f.close(); }
+});
+
+// ac:r5vdydjd
+// test:l7tcciru
+test('flow-when-wrap: an edge when label wraps by words into at most 3 lines of 28 characters', async () => {
+  const f = await fixture(types);
+  try {
+    const WHENS = {
+      ab: 'DONE: landed, lane wrote the Test results, every Test of the AC green',
+      bd: 'limit ok',
+    };
+    const EXPECTED = {
+      ab: ['DONE: landed, lane wrote the', 'Test results, every Test of', 'the AC green'],
+      bd: ['limit ok'],
+    };
+    await declare(f, {swap: {title: 'Swap'}});
+    await build(f, [
+      {id: 'd', title: 'Done'},
+      {id: 'b', title: 'Begin', relations: {swap: {edges: [{to: 'step:d', when: WHENS.bd}]}}},
+      {id: 'a', title: 'Start', relations: {swap: {edges: [{to: 'step:b', when: WHENS.ab}]}}},
+    ]);
+    await open(f, '&relation=swap', 3);
+    const s = await snap(f);
+    const byEdge = Object.fromEntries(s.whens.map(w => [w.edge, w]));
+    for (const [key, edge] of [['ab', 'step:a>step:b'], ['bd', 'step:b>step:d']]) {
+      const w = byEdge[edge];
+      assert.ok(w, edge + ' has its when label: ' + JSON.stringify(s.whens));
+      assert.deepEqual(w.lines, EXPECTED[key], key + ' wrapped lines');
+      assert.deepEqual(w.lines, wrapLabel(WHENS[key], 28, 3), key + ' matches wrapLabel(text, 28, 3)');
+      assert.equal(w.spans, EXPECTED[key].length, key + ' one <tspan> per line');
+      for (const x of w.xs) assert.ok(x !== null && Math.abs(x - w.xs[0]) < 0.5, key + ' lines share anchor x');
+      for (let i = 1; i < w.boxes.length; i++) assert.ok(w.boxes[i].top > w.boxes[i - 1].top, key + ' line ' + (i + 1) + ' is lower');
+    }
+    assert.ok(!overlap(byEdge['step:a>step:b'].box, byEdge['step:b>step:d'].box), 'adjacent column 3-line when boxes do not overlap');
+  } finally { await f.close(); }
+});
+
+// ac:r5vdydjd
+// test:qss4ce53
+test('flow-when-wrap-boundary: overlong words, fourth-line cuts and crossing 3-line when labels stay within bounds', async () => {
+  const f = await fixture(types);
+  try {
+    const LONG = 'SPLIT into two or more criteria, MOVE to the right requirement, or RETRY after a technical failure';
+    const THREE = 'DONE: landed, lane wrote the Test results, every Test of the AC green';
+    const WORD = 'Abcdefghijklmnopqrstuvwxyz1234';
+    await declare(f, {cross: {title: 'Cross'}});
+    await build(f, [
+      {id: 'd', title: 'Done'},
+      {id: 'c', title: 'Close', relations: {cross: {edges: [{to: 'step:d', when: WORD}]}}},
+      {id: 'b', title: 'Begin', relations: {cross: {edges: [{to: 'step:c', when: LONG}, {to: 'step:d'}]}}},
+      {id: 'a', title: 'Start', relations: {cross: {edges: [{to: 'step:c'}, {to: 'step:d', when: THREE}]}}},
+    ]);
+    await open(f, '&relation=cross', 4);
+    const cs = await snap(f);
+    assert.equal(cs.whens.length, 3, 'all three when labels show');
+    const find = prefix => cs.whens.find(w => w.lines[0].startsWith(prefix));
+    assert.deepEqual(find('SPLIT')?.lines, ['SPLIT into two or more', 'criteria, MOVE to the right', 'requirement, or RETRY after…']);
+    assert.deepEqual(find('Abcdef')?.lines, ['Abcdefghijklmnopqrstuvwxyz1…']);
+    assert.deepEqual(find('DONE:')?.lines, ['DONE: landed, lane wrote the', 'Test results, every Test of', 'the AC green']);
+    for (let i = 0; i < cs.whens.length; i++) for (let j = i + 1; j < cs.whens.length; j++) {
+      assert.ok(!overlap(cs.whens[i].box, cs.whens[j].box), 'crossing multi-line when boxes do not overlap: ' + JSON.stringify(cs.whens.map(w => w.box)));
+    }
+  } finally { await f.close(); }
+});
+
+// ac:r5vdydjd
+// test:b8u2ku5r
+test('flow-when-blank: omitted, empty and whitespace-only when values draw no condition label and no card hint', async () => {
+  const f = await fixture(types);
+  try {
+    await declare(f, {blank: {title: 'Blank'}});
+    await build(f, [
+      {id: 'd', title: 'Done'},
+      {id: 'c', title: 'Close', relations: {blank: {edges: [{to: 'step:d', when: '   '}]}}},
+      {id: 'b', title: 'Begin', relations: {blank: {edges: [{to: 'step:d', when: ''}]}}},
+      {id: 'a', title: 'Start', relations: {blank: {edges: [{to: 'step:b'}, {to: 'step:c', when: '   '}]}}},
+    ]);
+    await open(f, '&relation=blank', 4);
+    const s = await snap(f);
+    assert.equal(s.whens.length, 0, 'no .flow-when rendered for omitted, empty or whitespace when: ' + JSON.stringify(s.whens));
+    await click(f, 'step:a');
+    await waitCard(f, 'Start');
+    const hints = await f.page.locator('.flow-step-when').count();
+    assert.equal(hints, 0, 'no .flow-step-when hint rendered on card for blank when');
   } finally { await f.close(); }
 });

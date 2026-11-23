@@ -50,7 +50,7 @@ function factRow({address,title,tone,item_id}){
 function step(address,when,nameOf,toneOf,pick){
   const button=E('button',undefined,'flow-step');button.type='button';button.dataset.address=address;
   button.append(E('span',undefined,'status-circle '+toneOf(address)),nameOf(address));
-  if(when)button.append(E('small',when,'flow-step-when hint'));
+  if(when?.trim())button.append(E('small',when.trim(),'flow-step-when hint'));
   button.onclick=()=>pick(address);
   return button;
 }

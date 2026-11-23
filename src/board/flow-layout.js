@@ -6,45 +6,48 @@
 // - A column lists its nodes in address order and then the waypoints of the long edges. The
 //   barycenter sweeps sort it. Its rows are ROW_GAP apart round the middle line.
 export const COLUMN_GAP=280,ROW_GAP=140;
-// A node label has at most LINES lines of at most LINE characters.
-export const LINE=18,LINES=3;
-// The lines of a node label:
-// - Split at white space. A word of more than LINE characters keeps LINE-1 and gets "…".
-// - A word joins the line when the line, a space and the word fit in LINE characters, else
+// A node label has at most LINES lines of at most LINE characters. An edge condition has at
+// most LINES lines of at most WHEN_LINE characters.
+export const LINE=18,WHEN_LINE=28,LINES=3;
+// The lines of a wrapped label:
+// - Split at white space. A word of more than limit characters keeps limit-1 and gets "…".
+// - A word joins the line when the line, a space and the word fit in limit characters, else
 //   it starts the next line. An empty line takes the next word.
 // - When words remain after the last line, that line drops end words until it and "…" fit.
-//   With no word left, its first LINE-1 characters stay. The line ends with "…".
-export function wrapLabel(text){
-  const size=s=>[...s].length,cut=s=>[...s].slice(0,LINE-1).join('')+'…';
-  let rest=text.split(/\s+/).filter(Boolean).map(w=>size(w)>LINE?cut(w):w);
+//   With no word left, its first limit-1 characters stay. The line ends with "…".
+export function wrapLabel(text,limit=LINE,most=LINES){
+  const size=s=>[...s].length,cut=s=>[...s].slice(0,limit-1).join('')+'…';
+  let rest=text.split(/\s+/).filter(Boolean).map(w=>size(w)>limit?cut(w):w);
   const lines=[];
-  while(rest.length&&lines.length<LINES){
+  while(rest.length&&lines.length<most){
     let line=rest[0],i=1;
-    while(i<rest.length&&size(line)+1+size(rest[i])<=LINE)line+=' '+rest[i++];
+    while(i<rest.length&&size(line)+1+size(rest[i])<=limit)line+=' '+rest[i++];
     lines.push(rest.slice(0,i));rest=rest.slice(i);
   }
   const rows=lines.map(words=>words.join(' '));
   if(rest.length){
-    let words=lines[LINES-1];
-    while(words.length&&size(words.join(' '))+1>LINE)words=words.slice(0,-1);
-    rows[LINES-1]=words.length?words.join(' ')+'…':cut(rows[LINES-1]);
+    let words=lines[most-1];
+    while(words.length&&size(words.join(' '))+1>limit)words=words.slice(0,-1);
+    rows[most-1]=words.length?words.join(' ')+'…':cut(rows[most-1]);
   }
   return rows;
 }
 // The box of a condition label at the text size k = WHEN_K, without the page: the text size
-// of .flow-when in src/board_more.css times WHEN_K, WHEN_CHAR em for each character, WHEN_UP em
-// above the baseline and WHEN_DOWN em below it, round the x of its middle.
-export const WHEN_SIZE=11,WHEN_K=1.6,WHEN_CHAR=0.6,WHEN_UP=0.8,WHEN_DOWN=0.2,WHEN_STEP=18;
+// of .flow-when in src/board_more.css times WHEN_K, WHEN_CHAR em for each character of its
+// widest wrapped line, WHEN_UP em above the first baseline, WHEN_LINE_HEIGHT em between
+// baselines and WHEN_DOWN em below the last baseline, round the x of its middle.
+export const WHEN_SIZE=11,WHEN_K=1.6,WHEN_CHAR=0.55,WHEN_LINE_HEIGHT=1.2,WHEN_UP=0.8,WHEN_DOWN=0.2,WHEN_STEP=18;
 // The places of the condition labels {x, y, text} in edge order: a label moves down by
 // WHEN_STEP while its box overlaps the box of an earlier label.
 export function apartWhens(labels){
   const em=WHEN_SIZE*WHEN_K,placed=[];
   return labels.map(({x,y,text})=>{
-    const half=[...text].length*WHEN_CHAR*em/2;
-    const meets=p=>x-half<p.right&&p.left<x+half&&y-WHEN_UP*em<p.bottom&&p.top<y+WHEN_DOWN*em;
+    const rows=wrapLabel(text,WHEN_LINE),chars=Math.max(0,...rows.map(r=>[...r].length));
+    const half=chars*WHEN_CHAR*em/2,low=(Math.max(0,rows.length-1)*WHEN_LINE_HEIGHT+WHEN_DOWN)*em;
+    const meets=p=>x-half<p.right&&p.left<x+half&&y-WHEN_UP*em<p.bottom&&p.top<y+low;
     while(placed.some(meets))y+=WHEN_STEP;
-    placed.push({left:x-half,right:x+half,top:y-WHEN_UP*em,bottom:y+WHEN_DOWN*em});
-    return {x,y,text};
+    placed.push({left:x-half,right:x+half,top:y-WHEN_UP*em,bottom:y+low});
+    return {x,y,text,rows};
   });
 }
 // `addresses` come in address order. Each edge is {from, to} in its stored order. A forward edge
