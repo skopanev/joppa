@@ -181,6 +181,8 @@ test('compact-open-object-ac7: the Properties icon opens a closed object with it
   } finally { await f.close(); }
 });
 
+// ac:z292wew4
+// test:xv7ta5wj
 test('side-preview: an opened tree row shows its document on the right with margins, no Open page link, and Escape closes it', async () => {
   const f = await fixture({'domain:X': {title: 'Subscriptions', body: 'Preview body text'}, 'capability:a': {title: 'Child A', parent: 'domain:X'}});
   try {
@@ -214,7 +216,10 @@ test('side-preview: an opened tree row shows its document on the right with marg
     assert.equal(await X.getAttribute('open'), '');
     assert.equal(await child.isVisible(), true);
     const box = await pane.boundingBox();
+    const contentBox = await pane.locator('.object-content').boundingBox();
+    const headBox = await pane.locator('.preview-head').boundingBox();
     assert.ok(box.x > 400 && box.x + box.width <= 1440 - 28, JSON.stringify(box));
+    assert.ok(contentBox.width >= 740 && Math.abs(contentBox.x - headBox.x) < 1, JSON.stringify({contentBox, headBox}));
     await f.page.keyboard.press('Escape');
     await f.page.waitForFunction(() => document.getElementById('preview').hidden === true);
     assert.equal(await filters.isVisible(), true);

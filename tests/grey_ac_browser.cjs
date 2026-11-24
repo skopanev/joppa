@@ -205,4 +205,5 @@ describe('tests/grey_ac_browser.cjs', () => {
   require('./grey_ac_browser/part08.cjs')(shared);
   require('./grey_ac_browser/part09.cjs')(shared);
   require('./grey_ac_browser/part10.cjs')(shared);
+  require('./grey_ac_browser/part11.cjs')(shared);
 });
