@@ -184,3 +184,55 @@ async fn the_server_does_not_start_without_the_provider_key() -> Result<()> {
     );
     Ok(())
 }
+
+// ac:kc74j4qv
+// test:5gk94w6v
+#[tokio::test]
+#[ignore = "requires isolated JOPPA_TEST_DATABASE_URL with pgvector"]
+async fn a_stalled_provider_at_query_time_falls_back_to_word_results_within_five_seconds()
+-> Result<()> {
+    let _serial = SERIAL.lock().await;
+    let (pool, url) = db().await?;
+    let ws = workspace(&pool).await?;
+    let (fake, endpoint) = world::provider().await?;
+    let server = world::serve(&url, &["owner", "bot"], &endpoint).await?;
+    save(&server.root, &ws, "keys", "Passkey sign in", 0).await?;
+    settled(&pool, Some(&ws), Duration::from_secs(10)).await?;
+
+    fake.delay_ms.store(15_000, Ordering::SeqCst);
+    let start = Instant::now();
+    let mut set = tokio::task::JoinSet::new();
+    for i in 0..6 {
+        let (root, ws) = (server.root.clone(), ws.clone());
+        set.spawn(async move {
+            if i % 2 == 0 {
+                let h = world::http_search(&root, "bot", &ws, &[("q", "passkey")]).await?;
+                ensure!(
+                    h["semantic_status"] == "unavailable" && has(&h, "keys"),
+                    "{h}"
+                );
+            } else {
+                let m = world::mcp(
+                    &root,
+                    "bot",
+                    "joppa_search",
+                    json!({"workspace":ws,"query":"passkey"}),
+                )
+                .await?;
+                ensure!(has(&m, "keys"), "{m}");
+            }
+            Ok::<_, anyhow::Error>(())
+        });
+    }
+    while let Some(done) = set.join_next().await {
+        done??;
+    }
+    let elapsed = start.elapsed();
+    ensure!(
+        elapsed < Duration::from_secs(6),
+        "6 concurrent searches against a 15s stalled provider took {elapsed:?}"
+    );
+    Ok(())
+}
+
+include!("hybrid_search_http/part01.rs");

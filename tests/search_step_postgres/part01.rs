@@ -95,3 +95,89 @@ async fn enrollment_by_grant_queues_move_marker_not_full_rebuild() -> Result<()>
     ensure!(state_pos == p + 2 && left == 0, "state_pos={state_pos}, left={left}");
     Ok(())
 }
+
+// ac:6zvnk4k2
+// test:3e32vzax
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
+async fn concurrent_searches_after_a_single_save_build_only_the_changed_object() -> Result<()> {
+    let w = record_world::world(&["tests/x.rs > t"]).await?;
+    setup_domain_schema(&w).await?;
+    for chunk in 0..6 {
+        let ops: Vec<Value> = (chunk * 100..(chunk + 1) * 100)
+            .map(|i| {
+                json!({"command":{
+                    "op":"save_object","kind":"domain","id":format!("c{i:04}"),"revision":0,
+                    "parent":null,"data":{"title":format!("Item {i:04}"),"owner":"owner","body":"Seed"},"reason":"Seed"
+                }})
+            })
+            .collect();
+        w.mcp(&w.bot, "joppa_batch", json!({"request_id":format!("cseed-{chunk}"),"operations":ops}))
+            .await?
+            .map_err(anyhow::Error::msg)?;
+    }
+    w.mcp(&w.bot, "joppa_search", json!({"query":"Item 0001"}))
+        .await?
+        .map_err(anyhow::Error::msg)?;
+    tokio::time::sleep(std::time::Duration::from_millis(450)).await;
+
+    let conn = w.pool.get().await?;
+    conn.batch_execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+        .await?;
+    store::execute_remote_input(
+        &w.pool,
+        &w.ws,
+        "bot",
+        "save-fresh",
+        &json!({"op":"save_object","kind":"domain","id":"fresh","revision":0,"parent":null,"data":{"title":"Fresh target","owner":"owner","body":"Unique needle"},"reason":"Add one"}),
+    )
+    .await?;
+    // Invalidate in-memory state cache so any cold state load is counted.
+    conn.execute("UPDATE joppa.board_cache SET position=position WHERE workspace=$1", &[&w.ws])
+        .await?;
+    conn.query_one(
+        "SELECT pg_stat_statements_reset(0,(SELECT oid FROM pg_database WHERE datname=current_database()),0)",
+        &[],
+    )
+    .await?;
+
+    let w = std::sync::Arc::new(w);
+    let mut set = tokio::task::JoinSet::new();
+    for _ in 0..8 {
+        let w = w.clone();
+        set.spawn(async move {
+            w.mcp(&w.bot, "joppa_search", json!({"query":"Unique needle"}))
+                .await?
+                .map_err(anyhow::Error::msg)
+        });
+    }
+    while let Some(res) = set.join_next().await {
+        let parsed = res??;
+        ensure!(
+            parsed["items"]
+                .as_array()
+                .is_some_and(|a| a.iter().any(|i| i["id"] == "fresh" || i["address"] == "domain:fresh")),
+            "{parsed}"
+        );
+    }
+    let stmts = conn
+        .query(
+            "SELECT lower(query), calls FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database())",
+            &[],
+        )
+        .await?;
+    let mut inserts = 0i64;
+    let mut state_scans = 0i64;
+    for r in &stmts {
+        let (q, calls): (String, i64) = (r.get(0), r.get(1));
+        if q.contains("insert into joppa.search_documents") {
+            inserts += calls;
+        }
+        if q.contains("from joppa.state_entries s left join compact") {
+            state_scans += calls;
+        }
+    }
+    ensure!(inserts == 1, "expected 1 incremental INSERT, got {inserts}");
+    ensure!(state_scans == 1, "expected 1 state_entries scan across 8 searches, got {state_scans}");
+    Ok(())
+}

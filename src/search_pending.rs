@@ -47,15 +47,49 @@ pub(super) async fn add(
 /// Build the search rows of the pending objects of `workspace` up to the position of its
 /// current state, and remove them. False when no such object waits. The caller holds LOCK.
 pub(super) async fn build(client: &impl GenericClient, workspace: &str) -> Result<bool> {
-    let (state, position) = super::state_cache::read(client, workspace).await?;
+    let board = client
+        .query_opt(
+            "SELECT position, COALESCE(state->>'workspace_id',$1), COALESCE(state->>'reference_prefix',$1) FROM joppa.board_cache WHERE workspace=$1",
+            &[&workspace],
+        )
+        .await?;
     let sql =
         "DELETE FROM joppa.search_pending WHERE workspace=$1 AND position<=$2 RETURNING address";
+    let mut addresses = BTreeSet::new();
+    let mut had_move = false;
+    if let Some(board) = board {
+        let (pos, canonical, prefix): (i64, String, String) =
+            (board.get(0), board.get(1), board.get(2));
+        let rows = client.query(sql, &[&workspace, &pos]).await?;
+        if rows.is_empty() {
+            return Ok(false);
+        }
+        addresses.extend(rows.iter().map(|r| r.get::<_, String>(0)));
+        had_move = addresses.remove(MOVE);
+        if !addresses.contains(ALL) && addresses.is_empty() {
+            let moved = client
+                .execute(
+                    "UPDATE joppa.search_state SET position=GREATEST(position,$2),canonical_id=$3,reference_prefix=$4 WHERE workspace=$1",
+                    &[&workspace, &pos, &canonical, &prefix],
+                )
+                .await?;
+            if moved > 0 {
+                return Ok(true);
+            }
+            addresses.insert(ALL.into());
+        }
+    }
+    let (state, position) = super::state_cache::read(client, workspace).await?;
     let rows = client.query(sql, &[&workspace, &(position as i64)]).await?;
-    if rows.is_empty() {
+    if !had_move && addresses.is_empty() && rows.is_empty() {
         return Ok(false);
     }
-    let mut addresses: BTreeSet<String> = rows.iter().map(|r| r.get(0)).collect();
-    addresses.remove(MOVE);
+    for r in rows {
+        let address: String = r.get(0);
+        if address != MOVE {
+            addresses.insert(address);
+        }
+    }
     let all = addresses.remove(ALL);
     let selected = (!all).then_some(&addresses);
     super::search::project(client, workspace, &state, position, selected).await?;

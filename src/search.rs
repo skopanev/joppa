@@ -85,7 +85,7 @@ pub(super) async fn project(
         }
     };
     client.execute("INSERT INTO joppa.search_state(workspace,position,canonical_id,reference_prefix) VALUES($1,$2,$3,$4)
-      ON CONFLICT(workspace) DO UPDATE SET position=EXCLUDED.position,canonical_id=EXCLUDED.canonical_id,reference_prefix=EXCLUDED.reference_prefix", &[&workspace,&(position as i64),&state.workspace_id.as_deref().unwrap_or(workspace),&state.reference_prefix.as_deref().unwrap_or(workspace)]).await?;
+      ON CONFLICT(workspace) DO UPDATE SET position=GREATEST(joppa.search_state.position,EXCLUDED.position),canonical_id=EXCLUDED.canonical_id,reference_prefix=EXCLUDED.reference_prefix", &[&workspace,&(position as i64),&state.workspace_id.as_deref().unwrap_or(workspace),&state.reference_prefix.as_deref().unwrap_or(workspace)]).await?;
     Ok(())
 }
 
@@ -199,19 +199,31 @@ pub(super) async fn current(pool: &Pool, workspace: &str, actor: Option<&str>) -
     if let Some(actor) = actor {
         access::check(&*tx, &workspace, actor, false).await?;
     }
-    let row=tx.query_one("SELECT COALESCE((SELECT position FROM joppa.search_state WHERE workspace=$1),-1), COALESCE((SELECT max(position) FROM joppa.events WHERE workspace=$1),0), EXISTS(SELECT 1 FROM joppa.search_pending WHERE workspace=$1)", &[&workspace]).await?;
-    // The objects that writes left for later come first (search_pending.rs).
-    let (pending, behind) = (
-        row.get::<_, bool>(2),
-        row.get::<_, i64>(0) != row.get::<_, i64>(1),
-    );
+    let status = "SELECT COALESCE((SELECT position FROM joppa.search_state WHERE workspace=$1),-1), COALESCE((SELECT max(position) FROM joppa.events WHERE workspace=$1),0), EXISTS(SELECT 1 FROM joppa.search_pending WHERE workspace=$1)";
+    let flags = |r: tokio_postgres::Row| {
+        (
+            r.get::<_, bool>(2),
+            r.get::<_, i64>(0) != r.get::<_, i64>(1),
+        )
+    };
+    let (pending, behind) = flags(tx.query_one(status, &[&workspace]).await?);
     if pending || behind {
         // The search lock keeps the search builders apart, and no write waits for it.
         tx.execute(super::search_pending::LOCK, &[&workspace])
             .await?;
-        if !super::search_pending::build(&*tx, &workspace).await? && behind {
-            let (state, position) = super::state_cache::read(&*tx, &workspace).await?;
-            project(&*tx, &workspace, &state, position, None).await?;
+        // Read the current state after acquiring the lock so a waiter never repeats a build.
+        let (pending, behind) = flags(tx.query_one(status, &[&workspace]).await?);
+        let built = pending && super::search_pending::build(&*tx, &workspace).await?;
+        if !built {
+            let (still_pending, behind) = if pending {
+                flags(tx.query_one(status, &[&workspace]).await?)
+            } else {
+                (false, behind)
+            };
+            if !still_pending && behind {
+                let (state, position) = super::state_cache::read(&*tx, &workspace).await?;
+                project(&*tx, &workspace, &state, position, None).await?;
+            }
         }
     }
     tx.commit().await?;

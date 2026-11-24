@@ -207,3 +207,4 @@ async fn full_search_build_writes_rows_in_steps_of_500_objects_and_deletes_by_ki
 }
 
 include!("search_step_postgres/part01.rs");
+include!("search_step_postgres/part02.rs");

@@ -118,6 +118,9 @@ pub(super) enum Within<'a> {
     Addresses(&'a [String]),
 }
 
+/// Maximum wait for query embedding (slot and HTTP) before falling back to word search.
+pub const QUERY_EMBED_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
+
 /// The ranked reply of one search in `scope`. Without an actor the caller checked the access.
 async fn rank(
     pool: &Pool,
@@ -134,10 +137,18 @@ async fn rank(
     {
         return Ok(reply);
     }
+    let prompt = format!(
+        "Instruct: Given a product question, retrieve product requirements and acceptance criteria that answer it.\nQuery: {query}"
+    );
     let (vector, semantic) = match embedder {
-        Some(embedder) => match embedder.embed(&[format!("Instruct: Given a product question, retrieve product requirements and acceptance criteria that answer it.\nQuery: {query}")]).await {
-            Ok(v) => (Some(embeddings::literal(&v[0])?), "ready"),
-            Err(_) => (None, "unavailable"),
+        Some(embedder) => match tokio::time::timeout(
+            QUERY_EMBED_TIMEOUT,
+            embedder.embed(std::slice::from_ref(&prompt)),
+        )
+        .await
+        {
+            Ok(Ok(v)) => (Some(embeddings::literal(&v[0])?), "ready"),
+            _ => (None, "unavailable"),
         },
         None => (None, "not_configured"),
     };
