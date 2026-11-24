@@ -14,7 +14,52 @@ import {showObjectRevisions} from 'board/revisions.js';
 // The pane opens only on a wide screen. A narrow screen keeps the document in the row.
 const WIDE=window.matchMedia('(min-width: 900px)');
 const EASE_OUT='cubic-bezier(.2,.75,.25,1)';
-let shown=null,paneAnimation=null,loadingTimer=null;
+const STORAGE_KEY='joppa-preview-pct',DEFAULT_PCT=62,MIN_PCT=25,MAX_PCT=80,RESIZER_W=25;
+let shown=null,paneAnimation=null,loadingTimer=null,currentPct=DEFAULT_PCT;
+function clampPct(v){return Math.min(MAX_PCT,Math.max(MIN_PCT,Math.round(v*10)/10));}
+function applyPct(pct,save){
+  currentPct=clampPct(pct);
+  const layout=document.querySelector('.layout'),resizer=document.getElementById('preview-resizer');
+  if(layout)layout.style.setProperty('--preview-pct',String(currentPct));
+  if(resizer)resizer.setAttribute('aria-valuenow',String(Math.round(currentPct)));
+  if(save){try{localStorage.setItem(STORAGE_KEY,String(currentPct));}catch{}}
+}
+function initResizer(){
+  try{const saved=parseFloat(localStorage.getItem(STORAGE_KEY));if(Number.isFinite(saved))currentPct=clampPct(saved);}catch{}
+  const resizer=document.getElementById('preview-resizer');
+  if(!resizer)return;
+  resizer.setAttribute('aria-valuemin',String(MIN_PCT));resizer.setAttribute('aria-valuemax',String(MAX_PCT));
+  applyPct(currentPct,false);
+  let activeId=null;
+  const finish=()=>{
+    if(activeId===null)return;
+    activeId=null;resizer.classList.remove('is-dragging');document.body.classList.remove('is-resizing-preview');
+  };
+  resizer.addEventListener('pointerdown',e=>{
+    if(e.button!==0)return;
+    e.preventDefault();activeId=e.pointerId;resizer.setPointerCapture(e.pointerId);
+    resizer.classList.add('is-dragging');document.body.classList.add('is-resizing-preview');
+  });
+  resizer.addEventListener('pointermove',e=>{
+    if(e.pointerId!==activeId)return;
+    const layout=document.querySelector('.layout');if(!layout)return;
+    const rect=layout.getBoundingClientRect(),usable=Math.max(1,rect.width-RESIZER_W);
+    const treeW=e.clientX-rect.left-RESIZER_W/2;
+    applyPct(((usable-treeW)/usable)*100,true);
+  });
+  resizer.addEventListener('pointerup',finish);
+  resizer.addEventListener('pointercancel',finish);
+  resizer.addEventListener('lostpointercapture',finish);
+  resizer.addEventListener('dblclick',()=>{
+    try{localStorage.removeItem(STORAGE_KEY);}catch{}
+    applyPct(DEFAULT_PCT,false);
+  });
+  resizer.addEventListener('keydown',e=>{
+    if(e.key==='ArrowLeft'){e.preventDefault();applyPct(currentPct+3,true);}
+    else if(e.key==='ArrowRight'){e.preventDefault();applyPct(currentPct-3,true);}
+  });
+}
+initResizer();
 function stopPaneAnimation(){
   clearTimeout(loadingTimer);loadingTimer=null;
   paneAnimation?.cancel();paneAnimation=null;
@@ -62,7 +107,8 @@ export async function showPreview(address){
   const opening=pane.hidden||pane.classList.contains('is-closing');
   stopPaneAnimation();pane.classList.remove('is-closing');
   shown=address;mark(address);
-  document.querySelector('.layout')?.classList.add('has-preview');pane.hidden=false;
+  const resizer=document.getElementById('preview-resizer');
+  document.querySelector('.layout')?.classList.add('has-preview');pane.hidden=false;if(resizer)resizer.hidden=false;
   if(opening){
     pane.replaceChildren(buildCard(address,'',null,body=>body.append(E('p','Loading object…','object-loading hint'))));
     if(!reducedMotion()){
@@ -108,8 +154,10 @@ export function closePreview(){
 }
 export function hidePreview(){
   stopPaneAnimation();shown=null;mark(null);
-  const pane=document.getElementById('preview');
+  const pane=document.getElementById('preview'),resizer=document.getElementById('preview-resizer');
   if(pane){pane.classList.remove('is-closing','is-switching');pane.hidden=true;pane.replaceChildren();}
+  if(resizer){resizer.hidden=true;resizer.classList.remove('is-dragging');}
+  document.body.classList.remove('is-resizing-preview');
   document.querySelector('.layout')?.classList.remove('has-preview');
 }
 // The row of the shown document gets the selected look.
