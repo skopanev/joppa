@@ -159,6 +159,9 @@ pub struct ObjectRevision {
     /// review. A revision that copies this one has another number, so the pair stops counting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contract: Option<[u32; 2]>,
+    /// The contract hash of the parent when this revision was saved (parent_hash.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_hash: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

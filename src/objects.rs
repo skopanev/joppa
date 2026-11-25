@@ -82,3 +82,9 @@ pub use verification_items::*;
 #[path = "objects_restore.rs"]
 mod restore;
 pub use restore::*;
+#[path = "objects_parent_hash.rs"]
+mod parent_hash;
+pub use parent_hash::*;
+#[path = "objects_saved_data.rs"]
+mod saved_data;
+pub(crate) use saved_data::*;

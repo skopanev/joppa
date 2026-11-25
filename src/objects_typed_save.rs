@@ -2,7 +2,7 @@
 use super::*;
 #[path = "objects_contract_view.rs"]
 mod contract_view;
-use contract_view::contract;
+pub(crate) use contract_view::contract;
 
 /// Apply the typed command of a saved document, or keep the document as an override.
 #[allow(clippy::too_many_arguments)]

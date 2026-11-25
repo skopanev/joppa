@@ -101,6 +101,23 @@ No criterion, no test: every test in the repository has a present test node, and
 `joppa_record_results` gives `"unbound": []` before a merge. See [what green means](green.md)
 for the fields, the Test-5 checklist, the tones and the rollup.
 
+## Parent hash
+
+Each save, move and restore of a node stores `parent_hash`: the contract hash of its parent at
+that moment. The contract is the parent data without `owner`, `assignee` and the typed fields
+that do not reset. Each source counts as its title, body and live files. A save that changes
+only such quiet fields keeps the old `parent_hash`.
+
+Send `fields: ["parent_hash", "parent_hash_current", "parent_changed"]` on a list or an address
+read. `parent_hash_current` is the hash of the parent now. `parent_changed` is true when the
+node has a stamp and the two differ. A read by address without `fields` shows `parent_hash`
+and shows `parent_changed` only when it is true.
+
+To confirm a child against the new parent, send `data.parent_hash` with the value of
+`parent_hash_current`. The server refuses another value. A save without it changes no stamp,
+so an empty save stays a pure revision check. A compact Inbox type, such as a note, gives its
+children no stamp.
+
 ## Before implementation
 
 Score each REQ and AC with the 11111 checklist and the Reuse gate before implementation.

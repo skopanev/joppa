@@ -63,7 +63,11 @@ pub const CONTRACT_ONLY_RESET: &str = "contract_only_reset";
 /// any requirement. An older criterion save keeps its forced requirement revision in a replay.
 pub const OWN_REQUIREMENT_REVISIONS: &str = "own_requirement_revisions";
 
-pub const REPLAY_RULES: [&str; 15] = [
+/// From this rule on, a save, move or restore of a node stores the contract hash of its parent
+/// in the new revision (parent_hash.rs). An older revision has no stamp in a replay.
+pub const PARENT_HASH: &str = "parent_hash";
+
+pub const REPLAY_RULES: [&str; 16] = [
     RESET_CHANGED,
     LIST_SAVE_RESET,
     HUMAN_MEMBERS,
@@ -79,6 +83,7 @@ pub const REPLAY_RULES: [&str; 15] = [
     OWN_ALIAS,
     CONTRACT_ONLY_RESET,
     OWN_REQUIREMENT_REVISIONS,
+    PARENT_HASH,
 ];
 
 /// The workspace journal reached the epoch of the rule at `position`.

@@ -32,7 +32,7 @@ pub(crate) async fn current(
     crate::probe::count(&crate::probe::STATE_LOADS);
     // The compact inbox types come from the board row once, not once for each row, and the
     // rows need no order: each one goes into a map. The summaries are not workspace state.
-    let sql = "WITH compact AS MATERIALIZED (SELECT t.key AS kind FROM joppa.board_cache b CROSS JOIN LATERAL jsonb_each(b.first_view->'object_types') t WHERE b.workspace=$1 AND t.value->>'inbox'='true' AND t.value->>'role' IN ('group','document')) SELECT s.section,s.key,(CASE WHEN c.kind IS NOT NULL THEN COALESCE(s.compact,s.value) ELSE s.value END)::text,c.kind IS NOT NULL FROM joppa.state_entries s LEFT JOIN compact c ON s.section='objects' AND c.kind=s.kind WHERE s.workspace=$1 AND s.section<>'summaries'";
+    let sql = "WITH compact AS MATERIALIZED (SELECT t.key AS kind FROM joppa.board_cache b CROSS JOIN LATERAL jsonb_each(b.first_view->'object_types') t WHERE b.workspace=$1 AND t.value->>'inbox'='true' AND t.value->>'role' IN ('group','document') AND COALESCE(t.value->>'source','false')<>'true') SELECT s.section,s.key,(CASE WHEN c.kind IS NOT NULL THEN COALESCE(s.compact,s.value) ELSE s.value END)::text,c.kind IS NOT NULL FROM joppa.state_entries s LEFT JOIN compact c ON s.section='objects' AND c.kind=s.kind WHERE s.workspace=$1 AND s.section<>'summaries'";
     let rows = client.query_raw(sql, [&workspace]).await?;
     futures_util::pin_mut!(rows);
     while let Some(row) = futures_util::TryStreamExt::try_next(&mut rows).await? {

@@ -50,7 +50,7 @@ pub(super) fn objects() -> Value {
             "workspace": text("key or alias; optional with a public item ID"),
             "address": text("1 to 100 comma-separated addresses or public item IDs"),
             "fields": {"type":"array","items":{"type":"string"},
-                "description":"keys to return, on a list and on an address read: title, revision, body, status, children, relations, comments, files, child_counts, references or a data name"},
+                "description":"on a list and on an address read: title, revision, body, status, children, relations, comments, files, child_counts, references, parent_changed or a data name"},
             "limit": {"type":"integer","minimum":1,"maximum":100,
                 "description":"items in a page: 1 to 25, or 1 to 100 with fields"},
             "cursor": text(CURSOR),

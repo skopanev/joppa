@@ -11,7 +11,7 @@ pub use crate::read_detail::{detail, detail_keys, headers, list_detail, revision
 mod fields;
 pub use fields::{
     DETAIL_FIELDS, LIST_DETAIL_FIELDS, card_needs, check_fields, head, list_needs, needs_data,
-    object_fields,
+    object_fields, parent_hash_facts,
 };
 
 /// The page size of object lists, comments and edges.

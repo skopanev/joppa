@@ -165,6 +165,7 @@ pub(crate) fn sync_with(
                 .unwrap_or_default();
             let spec = forced_req.is_some_and(|req| key == &requirement_address(req));
             let revision = obj.revisions.last().map_or(1, |r| r.revision + 1);
+            let parent_hash = obj.revisions.last().and_then(|r| r.parent_hash.clone());
             // A revision that only a child save forces keeps the contract of the document, so
             // a pin of it stays current. An older one in a replay starts a new contract.
             let contract = obj
@@ -191,6 +192,7 @@ pub(crate) fn sync_with(
                         .map_or_else(|| reason.clone(), str::to_owned),
                     present: true,
                     contract,
+                    parent_hash,
                 });
         }
     }

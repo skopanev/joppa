@@ -59,6 +59,9 @@ pub fn restore(
     next.actor = actor.to_owned();
     next.reason = reason.clone();
     next.at = at.to_owned();
+    if commands::rule_applies(w, commands::PARENT_HASH, position) {
+        next.parent_hash = next.parent.as_deref().and_then(|p| contract_hash(w, p));
+    }
     if commands::rule_applies(w, commands::OWN_ALIAS, position) {
         next.alias = w.alias.clone();
     }

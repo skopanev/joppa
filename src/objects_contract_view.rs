@@ -7,7 +7,7 @@ use super::*;
 use std::borrow::Cow;
 
 /// The data of a document of `kind` without the parts that reset nothing.
-pub(super) fn contract<'a>(
+pub(crate) fn contract<'a>(
     w: &Workspace,
     types: &BTreeMap<String, TreeType>,
     kind: &str,

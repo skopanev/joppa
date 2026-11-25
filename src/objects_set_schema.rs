@@ -62,6 +62,10 @@ pub fn set_schema(
     for (kind, t) in types {
         commands::identifier(kind)?;
         commands::nonempty(&t.title)?;
+        for field in t.fields.keys().chain(t.references.keys()) {
+            let computed = crate::objects::PARENT_HASH_FIELDS.contains(&field.as_str());
+            ensure!(!computed, "field {field} is computed by the server");
+        }
         for (field, rule) in &t.fields {
             crate::field_types::validate_rule(field, rule)?;
         }

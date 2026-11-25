@@ -143,8 +143,9 @@ pub(super) async fn settle(
     };
     let types = crate::objects::schema(&state).types;
     for (address, object) in &mut state.objects {
+        // A source keeps its body: the contract hash of a node reads it (parent_hash.rs).
         let compact = types.get(&object.kind).is_some_and(|t| {
-            t.inbox == Some(true) && ["group", "document"].contains(&t.role.as_str())
+            t.inbox == Some(true) && ["group", "document"].contains(&t.role.as_str()) && !t.source
         });
         let compact = compact && !state.unloaded_objects.contains(address);
         // An object with one revision that keeps its data stays shared, without a copy.

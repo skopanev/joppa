@@ -34,6 +34,9 @@ pub(crate) fn save_into(
     at: &str,
     accept_unchanged: bool,
 ) -> Result<bool> {
+    // A confirmation of the parent hash is no data field (parent_hash.rs).
+    let (stripped, sent) = without_parent_hash(w, command, position)?;
+    let command: &Command = &stripped;
     let Command::SaveObject(crate::commands::SaveObjectOp {
         id,
         kind,
@@ -118,6 +121,9 @@ pub(crate) fn save_into(
     crate::note_parents::check_save(w, kind, parent.as_deref())?;
     parent_valid(&schema(w).types, w, kind, parent.as_deref(), Some(&key))?;
     parent_cycle(w, &key, parent.as_deref())?;
+    if let Some(sent) = &sent {
+        check_confirmation(w, sent, parent.as_deref())?;
+    }
     if w.schema_migrated {
         reference_targets(w, kind, data)?;
     }
@@ -183,48 +189,25 @@ pub(crate) fn save_into(
         .as_ref()
         .map(|o| o.revisions.clone())
         .unwrap_or_default();
-    let mut saved_data = if let Some(data) = task_data {
-        data
-    } else if !w.document_overrides.contains(&key)
-        && (w.documents_migrated
-            && matches!(schema(w).types[kind].role.as_str(), "requirement" | "ac")
-            || !w.documents_migrated && legacy_defaults().contains_key(kind) && kind != "note")
-    {
-        if w.schema_migrated {
-            let mut normalized = projected;
-            normalized.as_object_mut().unwrap().retain(|field, _| {
-                data.get(field).is_some()
-                    || document_adapter_fields(w, kind)
-                        .is_some_and(|fields| fields.contains(&field.as_str()))
-            });
-            for (field, value) in data.as_object().unwrap() {
-                normalized[field] = value.clone();
-            }
-            if !w.documents_migrated {
-                for field in schema_migration_defaults()
-                    .get(kind)
-                    .into_iter()
-                    .flat_map(|t| t.references.keys())
-                {
-                    if !schema(w).types[kind].references.contains_key(field)
-                        && data.get(field).is_none()
-                    {
-                        normalized.as_object_mut().unwrap().remove(field);
-                    }
-                }
-            }
-            normalized
-        } else {
-            projected
-        }
-    } else {
-        data.clone()
-    };
+    let mut saved_data = saved_data(w, (kind, &key), data, projected, task_data);
     input_status(w, kind, old.as_ref(), &mut saved_data);
     if w.body_migrated {
         crate::body_migration::to_body(&mut saved_data);
     }
-    if same(&saved_data) {
+    let parent_hash = match commands::rule_applies(w, commands::PARENT_HASH, position) {
+        true => stamp(
+            w,
+            kind,
+            old.as_ref(),
+            (parent.as_deref(), &saved_data),
+            sent.is_some(),
+        ),
+        false => old.as_ref().and_then(|o| o.current().parent_hash.clone()),
+    };
+    let stamped = old
+        .as_ref()
+        .is_some_and(|o| o.current().parent_hash == parent_hash);
+    if same(&saved_data) && stamped {
         return Ok(false);
     }
     object.parent_override = document_parent(w, &key).is_none_or(|p| &p != parent);
@@ -242,6 +225,7 @@ pub(crate) fn save_into(
         reason: reason.clone(),
         present: true,
         contract: None,
+        parent_hash,
     });
     w.objects.insert(key.clone(), std::sync::Arc::new(object));
     crate::relations::validate(w, &key, &relations, &kept)?;

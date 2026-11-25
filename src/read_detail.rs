@@ -148,7 +148,10 @@ pub fn detail(reply: Value, asked: &str, comments_cursor: Option<&str>) -> Resul
     let mut reply = detail_keys(reply, asked, comments_cursor)?;
     if let Some(map) = reply.as_object_mut() {
         map.retain(|key, _| !ON_REQUEST.contains(&key.as_str()));
+        // The stamp shows when it exists, and parent_changed only when true (parent_hash.rs).
+        map.remove("parent_hash_current");
     }
+    drop_same(&mut reply, &["parent_changed"], &json!(false));
     drop_same(&mut reply, &["comments_count", "files_count"], &json!(0));
     Ok(reply)
 }

@@ -124,6 +124,8 @@ pub(crate) fn affected(
             changed.insert(crate::objects::resolve_address(state, key).to_owned());
         }
     }
+    // A new text or file of a source gives a new contract hash to each node that names it.
+    crate::objects::source_users(state, &mut changed);
     // Each object that points to a changed key by its parent or a depends_on edge changes
     // too. One pass finds the objects that point to the changed keys, so a write of a leaf
     // needs no index. After a pass that adds objects, an index of the targets reaches the

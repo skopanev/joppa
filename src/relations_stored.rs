@@ -24,6 +24,8 @@ pub struct StoredRevision {
     present: bool,
     #[serde(default)]
     contract: Option<[u32; 2]>,
+    #[serde(default)]
+    parent_hash: Option<String>,
 }
 
 impl From<StoredRevision> for ObjectRevision {
@@ -45,6 +47,7 @@ impl From<StoredRevision> for ObjectRevision {
             reason: r.reason,
             present: r.present,
             contract: r.contract,
+            parent_hash: r.parent_hash,
         }
     }
 }

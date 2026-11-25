@@ -98,6 +98,7 @@ pub fn migrate(w: &mut Workspace, actor: &str, position: u64, at: &str) -> Resul
                 reason: REASON.into(),
                 present: true,
                 contract: None,
+                parent_hash: None,
             };
             let node = Object {
                 kind: kind.clone(),
