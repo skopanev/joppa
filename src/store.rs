@@ -66,8 +66,8 @@ pub const DEFAULT_URL: &str = "postgresql://postgres:joppa@127.0.0.1:55433/joppa
 #[path = "store_setup.rs"]
 mod setup;
 pub use setup::{
-    backfill_board, catch_up_statuses, check_journal, migrate, migrate_notes, pool,
-    status_projection_loop,
+    backfill_board, catch_up_parent_hashes, catch_up_statuses, check_journal, migrate,
+    migrate_notes, pool, status_projection_loop,
 };
 #[path = "store_manual_checks.rs"]
 mod manual_check_run;
@@ -80,7 +80,10 @@ use migrations::ensure_notes;
 /// version, so backfill_board reprojects every workspace at serve start. A raise replays every
 /// journal: time `joppa migrate` on a copy of production first (server/README.md). A change of
 /// the first_view shape needs no raise: a targeted SQL pass, such as migration 061, moves it.
-pub(super) const BOARD_PROJECTION_VERSION: &str = "23";
+pub(super) const BOARD_PROJECTION_VERSION: &str = "22";
+/// The version of joppa.objects.parent_hash_current in board_cache.first_view. A workspace
+/// with an older version gets the column from its current rows, without a journal replay.
+pub(super) const PARENT_HASH_VERSION: &str = "1";
 
 #[derive(Serialize)]
 pub struct Event {

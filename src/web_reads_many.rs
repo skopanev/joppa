@@ -39,7 +39,9 @@ pub(super) async fn read(
         let document = &reply["document"];
         let mut item = json!({"address": reply["address"], "kind": reply["kind"],
             "title": document["data"]["title"], "signal": reply["signal"],
-            "item_id": reply["item_id"], "present": document["present"] != false});
+            "item_id": reply["item_id"], "present": document["present"] != false,
+            "parent_hash": reply["parent_hash"], "parent_hash_current": reply["parent_hash_current"],
+            "parent_changed": reply["parent_changed"]});
         if let Some(fields) = fields {
             joppa::read_shapes::keep_fields(&mut item, fields);
         }

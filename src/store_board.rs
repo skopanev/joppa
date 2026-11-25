@@ -93,8 +93,13 @@ pub(super) async fn project_selected(
     };
     let first_view = json!({"filters":filters,"dimensions":crate::filter_dimensions::listed(&dimensions),"computed_fields":crate::computed_fields::rules(&crate::objects::schema(state).types).keys().collect::<Vec<_>>(),"projection_version":BOARD_PROJECTION_VERSION,"object_types":object_types,"statuses":statuses,"custom_tree":custom_tree,"title":&state.title,"hidden_by":&state.hidden_by,"assignees":assignees,"members":&state.members,
         "workspace_id":state.workspace_id.as_deref().unwrap_or(workspace),"counts":counts});
+    // A full projection writes parent_hash_current of every row. A later write keeps the mark.
+    let mut first_view = first_view;
+    if selected.is_none() {
+        first_view["parent_hash_version"] = json!(PARENT_HASH_VERSION);
+    }
     super::objects::project(client, workspace, state, events, selected.as_ref()).await?;
-    client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,first_view=EXCLUDED.first_view || CASE WHEN board_cache.first_view ? 'legacy_receipts_version' THEN jsonb_build_object('legacy_receipts_version',board_cache.first_view->'legacy_receipts_version') ELSE '{}'::jsonb END || CASE WHEN board_cache.first_view ? 'status_projection' THEN jsonb_build_object('status_projection',board_cache.first_view->'status_projection') ELSE '{}'::jsonb END",
+    client.execute("INSERT INTO joppa.board_cache(workspace,position,state,summary,signals,first_view) VALUES($1,$2,$3::text::jsonb,$4::text::jsonb,$5::text::jsonb,$6::text::jsonb) ON CONFLICT (workspace) DO UPDATE SET position=EXCLUDED.position,state=EXCLUDED.state,summary=EXCLUDED.summary,signals=EXCLUDED.signals,first_view=EXCLUDED.first_view || CASE WHEN board_cache.first_view ? 'legacy_receipts_version' THEN jsonb_build_object('legacy_receipts_version',board_cache.first_view->'legacy_receipts_version') ELSE '{}'::jsonb END || CASE WHEN board_cache.first_view ? 'status_projection' THEN jsonb_build_object('status_projection',board_cache.first_view->'status_projection') ELSE '{}'::jsonb END || CASE WHEN board_cache.first_view ? 'parent_hash_version' AND NOT EXCLUDED.first_view ? 'parent_hash_version' THEN jsonb_build_object('parent_hash_version',board_cache.first_view->'parent_hash_version') ELSE '{}'::jsonb END",
         &[&workspace,&(position as i64),&super::state_rows::metadata(state)?,&"{}",&"{}",&first_view.to_string()]).await?;
     // A write recomputes only the nodes that it reaches. A schema change rebuilds all. A replay
     // has no previous state and keeps only some events, so only a write reads them here.

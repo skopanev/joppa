@@ -202,3 +202,23 @@ fn a_move_stamps_the_hash_of_the_new_parent() {
     assert_eq!(stamp_of(&w), contract_hash(&w, "domain:e"));
     assert_ne!(stamp_of(&w), contract_hash(&w, "domain:d"));
 }
+
+#[test]
+fn an_archived_node_has_no_contract_hash() {
+    let mut w = workspace();
+    let e = save(
+        "domain",
+        "e",
+        None,
+        0,
+        json!({"title": "E", "owner": "bob", "body": "e"}),
+    );
+    apply(&mut w, "bob", &e, 104, AT).unwrap();
+    assert!(contract_hash(&w, "domain:e").is_some());
+    let archive: Command = serde_json::from_value(
+        json!({"op": "archive_object", "target": "domain:e", "revision": 1, "reason": "r"}),
+    )
+    .unwrap();
+    apply(&mut w, "bob", &archive, 105, AT).unwrap();
+    assert_eq!(contract_hash(&w, "domain:e"), None);
+}

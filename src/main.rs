@@ -35,6 +35,7 @@ async fn run() -> Result<()> {
             let host = args.get(2).map(String::as_str).unwrap_or("127.0.0.1");
             store::migrate_notes(&pool).await?;
             store::backfill_board(&pool).await?;
+            store::catch_up_parent_hashes(&pool).await?;
             web::serve(pool, host, port).await?;
         }
         Some("command") => {

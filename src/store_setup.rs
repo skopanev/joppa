@@ -225,4 +225,6 @@ async fn migrate_notes_in(client: &impl GenericClient) -> Result<()> {
 
 #[path = "store_backfill.rs"]
 mod backfill;
-pub use backfill::{backfill_board, catch_up_statuses, status_projection_loop};
+pub use backfill::{
+    backfill_board, catch_up_parent_hashes, catch_up_statuses, status_projection_loop,
+};

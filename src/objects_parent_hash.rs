@@ -12,13 +12,15 @@ use sha2::{Digest, Sha256};
 /// to confirm the current parent, and refuses the other two.
 pub const PARENT_HASH_FIELDS: [&str; 3] = ["parent_hash", "parent_hash_current", "parent_changed"];
 
-/// The contract hash of the object at `address`, present or archived. A compact Inbox type
-/// (store_state_cache.rs) has none, so the hash never depends on how the state loads.
+/// The contract hash of the present object at `address`. An archived object has none, so its
+/// children read parent_changed. A compact Inbox type (store_state_cache.rs) has none, so the
+/// hash never depends on how the state loads.
 pub fn contract_hash(w: &Workspace, address: &str) -> Option<String> {
     let o = w.objects.get(resolve_address(w, address))?;
     let types = schema(w).types;
     let t = types.get(&o.kind)?;
-    if t.inbox == Some(true) && ["group", "document"].contains(&t.role.as_str()) {
+    let compact = t.inbox == Some(true) && ["group", "document"].contains(&t.role.as_str());
+    if !o.current().present || compact && !t.source {
         return None;
     }
     let contract = contract(w, &types, &o.kind, &o.current().data);

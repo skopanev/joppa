@@ -78,6 +78,33 @@ pub async fn status_projection_loop(pool: Pool) {
     }
 }
 
+/// Fill parent_hash_current of each object (parent_hash.rs) in the workspaces with an older
+/// version, one workspace in each transaction, in parts of PART rows.
+pub async fn catch_up_parent_hashes(pool: &Pool) -> Result<usize> {
+    let mut conn = pool.get().await?;
+    let rows = conn.query("SELECT w.id FROM joppa.workspaces w JOIN joppa.board_cache b ON b.workspace=w.id WHERE COALESCE(b.first_view->>'parent_hash_version','')<>$1 ORDER BY w.id", &[&PARENT_HASH_VERSION]).await?;
+    for row in &rows {
+        let id: String = row.get(0);
+        let tx = conn.transaction().await?;
+        lock(&*tx, &id).await?;
+        let (state, _) = state_rows::current(&*tx, &id).await?;
+        let keys: Vec<&String> = state.objects.keys().collect();
+        for part in keys.chunks(super::stream::PART) {
+            let values: Vec<Value> = part
+                .iter()
+                .map(|a| json!({"address": a, "hash": crate::objects::parent_hash_current(&state, a)}))
+                .collect();
+            tx.execute("UPDATE joppa.objects o SET parent_hash_current=x.hash FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,hash text) WHERE o.workspace=$1 AND o.address=x.address AND o.parent_hash_current IS DISTINCT FROM x.hash", &[&id, &json!(values).to_string()]).await?;
+        }
+        tx.execute("UPDATE joppa.board_cache SET first_view=first_view||jsonb_build_object('parent_hash_version',$2::text) WHERE workspace=$1", &[&id, &PARENT_HASH_VERSION]).await?;
+        tx.commit().await?;
+        drop(keys);
+        drop(state);
+        super::stream::trim_heap();
+    }
+    Ok(rows.len())
+}
+
 /// The write lock of one workspace.
 async fn lock(client: &impl GenericClient, id: &str) -> Result<()> {
     client
