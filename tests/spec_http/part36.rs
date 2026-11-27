@@ -96,7 +96,7 @@ async fn bot_saves_on_a_stale_revision_over_http_and_is_refused() -> Result<()> 
     bot_refused_over_http(
         &w,
         note_save("a", 1, "Stale change", json!({})),
-        "stale object revision; read the object again",
+        "stale object revision on note:a: sent 1, current is 2",
     )
     .await?;
     let after = w.get_as(&w.bot, "address=note:a").await?;

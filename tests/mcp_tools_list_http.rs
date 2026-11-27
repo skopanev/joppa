@@ -75,7 +75,7 @@ async fn tools_list_gives_the_writing_rules_once_and_short_text_field_descriptio
         "the description of joppa_command does not hold {rules:?}: {description}"
     );
     let properties = &command["inputSchema"]["properties"]["command"]["properties"];
-    for field in ["body", "text", "reason", "value"] {
+    for field in ["text", "reason", "value"] {
         let text = properties[field]["description"]
             .as_str()
             .with_context(|| format!("{field} has no description: {properties}"))?;

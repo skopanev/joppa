@@ -36,7 +36,7 @@ fn a_save_on_a_stale_object_revision_is_refused() {
         &mut w,
         "agent",
         note("a", 1, json!({})),
-        "stale object revision; read the object again",
+        "stale object revision on note:a: sent 1, current is 2",
     );
     assert_eq!(w.state.objects["note:a"].current().revision, 2);
 }

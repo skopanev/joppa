@@ -101,7 +101,7 @@ async fn a_member_archives_a_signal_that_needs_no_work_with_a_reason() -> Result
             mcp,
             &w.alex,
             json!({"op":"archive_object","target":signal,"revision":0,"reason":"Out of scope"}),
-            "stale object revision; read the object again",
+            &format!("stale object revision on {signal}: sent 0, current is 1"),
         )
         .await?;
         ensure!(

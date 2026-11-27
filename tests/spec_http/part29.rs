@@ -105,7 +105,7 @@ async fn an_identical_save_adds_no_revision_or_journal_event() -> Result<()> {
     ensure!(!reply.status().is_success(), "a stale save is refused");
     let reply: Value = reply.json().await?;
     ensure!(
-        reply["error"] == "stale object revision; read the object again",
+        reply["error"] == "stale object revision on task:t: sent 3, current is 4",
         "{reply}"
     );
     let task = revisions().await?;

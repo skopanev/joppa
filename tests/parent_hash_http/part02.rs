@@ -211,7 +211,7 @@ async fn catch_up_parent_hashes_fills_missing_columns_without_journal_replay_and
         .await?;
     ensure!(
         row.get::<_, Option<String>>(0).as_deref() == Some(expected.as_str())
-            && row.get::<_, Option<String>>(1).as_deref() == Some("1")
+            && row.get::<_, Option<String>>(1).as_deref() == Some("2")
             && row.get::<_, Option<String>>(2).as_deref() == Some("22")
     );
     ok(&w, json!({"op":"save_object","kind":"domain","id":"e","revision":0,"parent":null,
@@ -220,6 +220,6 @@ async fn catch_up_parent_hashes_fills_missing_columns_without_journal_replay_and
         .query_one("SELECT first_view->>'parent_hash_version' FROM joppa.board_cache WHERE workspace=$1", &[&w.ws])
         .await?
         .get(0);
-    ensure!(after.as_deref() == Some("1"), "after write: {after:?}");
+    ensure!(after.as_deref() == Some("2"), "after write: {after:?}");
     Ok(())
 }

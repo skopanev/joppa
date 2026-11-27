@@ -117,7 +117,10 @@ async fn an_explicit_id_and_an_exhausted_retry_are_refused() -> Result<()> {
     let explicit = w
         .command(&w.bot, criterion(Some("aaaaaaaa"), "Again"))
         .await?;
-    refused(explicit, "stale object revision; read the object again")?;
+    refused(
+        explicit,
+        "stale object revision on ac:aaaaaaaa: sent 0, current is 1",
+    )?;
     let generated = w.command(&w.bot, criterion(None, "New")).await?;
     refused(
         generated,
