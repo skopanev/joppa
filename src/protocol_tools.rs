@@ -24,7 +24,7 @@ pub(super) fn list() -> Vec<Value> {
             "joppa_search",
             "Find objects by words and meaning. A hit gives address, title, revision and excerpt.",
             schemas::search(),
-            json!(["workspace", "query"]),
+            json!(["query"]),
         ),
         tool(
             "joppa_tree",
