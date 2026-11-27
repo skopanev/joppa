@@ -22,7 +22,7 @@ fn task(extra: Value) -> Value {
     json!({ "task": t })
 }
 
-// ac:SPEEDSCHEMA
+// ac:k5xopwlt
 #[test]
 fn a_schema_write_of_the_look_and_the_limits_keeps_the_projection() {
     let before = workspace(1, task(json!({})), json!({}));
@@ -33,7 +33,7 @@ fn a_schema_write_of_the_look_and_the_limits_keeps_the_projection() {
     assert!(projection_schema_same(&after, &before).unwrap());
 }
 
-// ac:SPEEDSCHEMA
+// ac:k5xopwlt
 #[test]
 fn a_schema_write_of_a_projection_rule_projects_again() {
     let before = workspace(1, task(json!({})), json!({}));

@@ -159,7 +159,7 @@ mod tests {
         permits.len()
     }
 
-    // ac:SPEEDSEARCH
+    // ac:ewp7bgsu
     #[tokio::test(start_paused = true)]
     async fn two_transient_failures_open_the_breaker_for_30_seconds() {
         let breaker = Breaker::default();

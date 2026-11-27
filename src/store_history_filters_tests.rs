@@ -13,7 +13,7 @@ fn bound() -> Bound {
     }
 }
 
-// ac:SPEEDHISTORY
+// ac:5jzkeg7c
 #[test]
 fn an_unset_filter_tests_only_its_null_parameter() {
     let sql = bound().clause(6);
@@ -26,7 +26,7 @@ fn an_unset_filter_tests_only_its_null_parameter() {
     }
 }
 
-// ac:SPEEDHISTORY
+// ac:5jzkeg7c
 #[test]
 fn each_set_filter_reads_the_expression_of_its_index() {
     let b = Bound {
