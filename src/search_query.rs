@@ -141,14 +141,9 @@ async fn rank(
         "Instruct: Given a product question, retrieve product requirements and acceptance criteria that answer it.\nQuery: {query}"
     );
     let (vector, semantic) = match embedder {
-        Some(embedder) => match tokio::time::timeout(
-            QUERY_EMBED_TIMEOUT,
-            embedder.embed(std::slice::from_ref(&prompt)),
-        )
-        .await
-        {
-            Ok(Ok(v)) => (Some(embeddings::literal(&v[0])?), "ready"),
-            _ => (None, "unavailable"),
+        Some(embedder) => match embedder.embed_query(&prompt, QUERY_EMBED_TIMEOUT).await? {
+            Some(v) => (Some(embeddings::literal(&v)?), "ready"),
+            None => (None, "unavailable"),
         },
         None => (None, "not_configured"),
     };

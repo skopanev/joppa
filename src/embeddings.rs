@@ -1,5 +1,5 @@
 //! DeepInfra produces vectors; PostgreSQL stores them. No local inference.
-use crate::embeddings_limit::{InputFault, Limits, ProviderStatus, is_input_fault};
+use crate::embeddings_limit::{Breaker, InputFault, Limits, ProviderStatus, is_input_fault};
 use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
 use std::time::Duration;
@@ -15,6 +15,7 @@ pub struct Embedder {
     key: String,
     endpoint: String,
     limits: Limits,
+    breaker: Breaker,
 }
 #[derive(Deserialize)]
 struct Response {
@@ -60,9 +61,40 @@ impl Embedder {
             key,
             endpoint,
             limits: Limits::default(),
+            breaker: Breaker::default(),
         })
     }
+
+    /// The vector of a search query, or None at once while the breaker is open. None also
+    /// comes after `timeout` or a provider error, and a timeout counts as a failure.
+    pub async fn embed_query(&self, prompt: &str, timeout: Duration) -> Result<Option<Vec<f32>>> {
+        if self.breaker.is_open() {
+            return Ok(None);
+        }
+        let input = [prompt.to_owned()];
+        match tokio::time::timeout(timeout, self.embed(&input)).await {
+            Ok(Ok(mut vectors)) => Ok(vectors.pop()),
+            Ok(Err(_)) => Ok(None),
+            Err(_) => {
+                self.breaker.fail();
+                Ok(None)
+            }
+        }
+    }
+
+    /// The vectors of 1 to 16 texts. A success closes the breaker, and a transient error
+    /// counts on it. The indexer calls this also while the breaker is open, so its retry
+    /// pass closes the breaker when the provider answers again.
     pub async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+        let result = self.request(input).await;
+        match &result {
+            Ok(_) => self.breaker.succeed(),
+            Err(error) => self.breaker.record(error),
+        }
+        result
+    }
+
+    async fn request(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
         ensure!(
             !input.is_empty() && input.len() <= 16,
             "embedding batch must contain 1–16 documents"

@@ -16,9 +16,12 @@ pub(in crate::store) async fn project(
     selected: Option<&std::collections::BTreeSet<String>>,
 ) -> Result<()> {
     let prefix = state.reference_prefix.as_deref().unwrap_or(workspace);
-    let schema_changed = events
-        .iter()
-        .any(|e| crate::store::schema_event(&e.command));
+    // A schema write rebuilds every link only in a full projection: when it projects only the
+    // changed objects, its rules gave the same projection (store_state_schema.rs).
+    let schema_changed = selected.is_none()
+        && events
+            .iter()
+            .any(|e| crate::store::schema_event(&e.command));
     // A redaction rewrites the stored revisions of its object. Nothing else may. It runs first,
     // so the revision check of each part compares with the redacted rows.
     let redactions: Vec<(String, String)> = events

@@ -85,7 +85,26 @@ async fn endpoint(
         .get(joppa::actor_alias::HEADER)
         .and_then(|v| v.to_str().ok());
     let work = crate::protocol::handle(&app.pool, &actor, &message, app.embedder.as_ref(), alias);
-    match joppa::write_key::scope(key_workspace, work).await {
+    let start = std::time::Instant::now();
+    let reply = joppa::write_key::scope(key_workspace.clone(), work).await;
+    let ms = start.elapsed().as_millis();
+    if ms >= super::SLOW_REQUEST_MS {
+        // The log names the call, never its arguments or a token.
+        let params = &message["params"];
+        let method = message["method"].as_str().unwrap_or("-");
+        let tool = params["name"].as_str().unwrap_or("-");
+        let workspace = params["arguments"]["workspace"].as_str();
+        let workspace = workspace.or(key_workspace.as_deref()).unwrap_or("-");
+        let status = match &reply {
+            Some(r) if r.get("error").is_some() => "error",
+            Some(_) => "ok",
+            None => "accepted",
+        };
+        eprintln!(
+            "joppa: slow mcp method={method} tool={tool} workspace={workspace} actor={actor} status={status} ms={ms}"
+        );
+    }
+    match reply {
         Some(r) => Json(r).into_response(),
         None => StatusCode::ACCEPTED.into_response(),
     }

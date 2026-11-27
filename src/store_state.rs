@@ -2,6 +2,8 @@ use super::*;
 use std::collections::BTreeMap;
 #[path = "store_state_entries.rs"]
 mod entries;
+#[path = "store_state_schema.rs"]
+mod schema_rules;
 pub(crate) use entries::*;
 #[path = "store_state_current.rs"]
 mod current;

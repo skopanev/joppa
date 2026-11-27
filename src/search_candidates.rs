@@ -7,8 +7,12 @@ use anyhow::Result;
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{Row, Transaction};
 
-/// A revision row that the current document already covers is not a candidate.
-const COVERED: &str = "EXISTS(SELECT 1 FROM joppa.search_documents c JOIN joppa.objects o ON o.workspace=c.workspace AND o.address=c.kind||':'||c.local_id WHERE c.workspace=r.workspace AND c.kind||':'||c.local_id=r.address AND o.revision=r.revision)";
+/// A revision row that the current document already covers is not a candidate. The join reads
+/// the primary keys of both tables, so the nearest query checks only the rows that it orders.
+const COVERED: &str = "EXISTS(SELECT 1 FROM joppa.objects o JOIN joppa.search_documents c ON c.workspace=o.workspace AND c.kind=o.kind AND c.local_id=o.local_id WHERE o.workspace=r.workspace AND o.address=r.address AND o.revision=r.revision)";
+
+/// An embedded row of the current profile ($2).
+const EMBEDDED: &str = "embedding IS NOT NULL AND embedding_profile=$2";
 
 /// The filter of the rows of one table alias: `$flag` is true when a filter can drop a row,
 /// and the clause of the node filters starts at `$first`.
@@ -17,6 +21,12 @@ fn keep(alias: &str, flag: usize, bound: &Bound, first: usize) -> String {
         "(NOT ${flag}::boolean OR EXISTS(SELECT 1 FROM joppa.objects o WHERE o.workspace={alias}.workspace AND o.address={alias}.kind||':'||{alias}.local_id AND {}))",
         bound.clause(first)
     )
+}
+
+/// The filter of the revision rows: the object of a revision has the address of the row.
+fn keep_rev(flag: usize, bound: &Bound, first: usize) -> String {
+    keep("r", flag, bound, first)
+        .replace("o.address=r.kind||':'||r.local_id", "o.address=r.address")
 }
 
 fn params<'a>(
@@ -38,21 +48,15 @@ pub(super) async fn counts(
     all_versions: bool,
     bound: &Bound,
 ) -> Result<(i64, i64)> {
-    let (d, r) = (keep("d", 3, bound, 4), keep("r", 3, bound, 4));
-    let (indexed, embedded) = if all_versions {
-        (
-            format!(
-                "+ (SELECT count(*) FROM joppa.search_revisions r WHERE workspace=ANY($1) AND {r} AND NOT {COVERED})"
-            ),
-            format!(
-                "+ (SELECT count(*) FROM joppa.search_revisions r WHERE workspace=ANY($1) AND {r} AND embedding IS NOT NULL AND embedding_profile=$2 AND NOT {COVERED})"
-            ),
-        )
-    } else {
-        Default::default()
+    let (d, r) = (keep("d", 3, bound, 4), keep_rev(3, bound, 4));
+    // Each table is read once: count(*) counts the indexed rows and the filter the embedded.
+    let revisions = match all_versions {
+        true => format!(
+            "(SELECT count(*) AS n,count(*) FILTER (WHERE {EMBEDDED}) AS e FROM joppa.search_revisions r WHERE workspace=ANY($1) AND {r} AND NOT {COVERED})"
+        ),
+        false => "(SELECT 0 AS n,0 AS e)".to_owned(),
     };
-    let row = tx.query_one(&format!("SELECT (SELECT count(*) FROM joppa.search_documents d WHERE workspace=ANY($1) AND {d}) {indexed},
-        (SELECT count(*) FROM joppa.search_documents d WHERE workspace=ANY($1) AND {d} AND embedding IS NOT NULL AND embedding_profile=$2) {embedded}"),
+    let row = tx.query_one(&format!("SELECT d.n+r.n,d.e+r.e FROM (SELECT count(*) AS n,count(*) FILTER (WHERE {EMBEDDED}) AS e FROM joppa.search_documents d WHERE workspace=ANY($1) AND {d}) d, {revisions} r"),
         &params(vec![&scope, &PROFILE], &bound.narrows(), bound)).await?;
     Ok((row.get(0), row.get(1)))
 }
@@ -66,7 +70,7 @@ pub(super) async fn words(
     all_versions: bool,
     bound: &Bound,
 ) -> Result<Vec<Row>> {
-    let (d, r) = (keep("d", 3, bound, 4), keep("r", 3, bound, 4));
+    let (d, r) = (keep("d", 3, bound, 4), keep_rev(3, bound, 4));
     let revisions = if all_versions {
         format!("UNION ALL
       SELECT r.workspace,r.kind,r.local_id,r.revision,false,false,ts_rank_cd(r.terms,q.terms) FROM joppa.search_revisions r,q
@@ -144,7 +148,10 @@ pub(super) fn title_boost(title: &str, query: &str) -> f64 {
 /// distance order until enough rows pass the workspace and node filters, up to 1,000,000 index
 /// rows. The inner list holds 200 rows, so the outer sort reads each group of equal distance
 /// at row 100 whole and orders it by key. Without all_versions the statement has no branch on
-/// the revisions, which have no vector index.
+/// the revisions, which have no vector index, and a sequential scan is off, so a narrow filter
+/// does not trade the HNSW index for a scan of each vector. With all_versions the revisions
+/// also give their 200 nearest rows in the order of the outer sort, so the check of COVERED
+/// reads only the rows that come first.
 pub(super) async fn nearest(
     tx: &Transaction<'_>,
     scope: &[String],
@@ -152,11 +159,12 @@ pub(super) async fn nearest(
     all_versions: bool,
     bound: &Bound,
 ) -> Result<Vec<Row>> {
-    let (d, r) = (keep("d", 4, bound, 5), keep("r", 4, bound, 5));
+    let (d, r) = (keep("d", 4, bound, 5), keep_rev(4, bound, 5));
     let revisions = if all_versions {
         format!("UNION ALL
-        SELECT r.workspace,r.kind,r.local_id,r.revision,r.embedding <=> $3::text::vector FROM joppa.search_revisions r
-        WHERE r.workspace=ANY($1) AND {r} AND r.embedding IS NOT NULL AND r.embedding_profile=$2 AND NOT {COVERED}")
+        (SELECT r.workspace,r.kind,r.local_id,r.revision,r.embedding <=> $3::text::vector AS distance FROM joppa.search_revisions r
+        WHERE r.workspace=ANY($1) AND {r} AND r.embedding IS NOT NULL AND r.embedding_profile=$2 AND NOT {COVERED}
+        ORDER BY distance,r.workspace,r.kind,r.local_id,r.revision LIMIT 200)")
     } else {
         String::new()
     };
@@ -164,13 +172,20 @@ pub(super) async fn nearest(
         "SET LOCAL hnsw.ef_search = 100; SET LOCAL hnsw.iterative_scan = strict_order; SET LOCAL hnsw.max_scan_tuples = 1000000",
     )
     .await?;
-    Ok(tx.query(&format!("SELECT workspace,kind,local_id,rev FROM (
+    if !all_versions {
+        tx.batch_execute("SET LOCAL enable_seqscan = off").await?;
+    }
+    let rows = tx.query(&format!("SELECT workspace,kind,local_id,rev FROM (
         (SELECT d.workspace,d.kind,d.local_id,-1 AS rev,d.embedding <=> $3::text::vector AS distance FROM joppa.search_documents d
         WHERE d.workspace=ANY($1) AND {d} AND d.embedding IS NOT NULL AND d.embedding_profile=$2
         ORDER BY d.embedding <=> $3::text::vector LIMIT 200)
         {revisions}
       ) c ORDER BY distance,workspace,kind,local_id,rev LIMIT 100"),
-      &params(vec![&scope, &PROFILE, &vector], &bound.narrows(), bound)).await?)
+      &params(vec![&scope, &PROFILE, &vector], &bound.narrows(), bound)).await?;
+    if !all_versions {
+        tx.batch_execute("SET LOCAL enable_seqscan = on").await?;
+    }
+    Ok(rows)
 }
 
 #[cfg(test)]

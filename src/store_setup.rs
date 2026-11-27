@@ -120,6 +120,7 @@ async fn migrate_once(pool: &Pool) -> Result<()> {
         include_str!("../migrations/080_parent_hash.sql"),
         include_str!("../migrations/081_contract_hash.sql"),
         include_str!("../migrations/082_dependency_sort.sql"),
+        include_str!("../migrations/083_speed_fixes.sql"),
     ] {
         tx.batch_execute(sql).await?;
     }

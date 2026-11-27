@@ -8,7 +8,7 @@ use super::*;
 mod filters;
 #[path = "store_history_mark.rs"]
 mod mark;
-use filters::{bind_targets, filters, scope};
+use filters::{bind_targets, scope};
 pub use mark::mark_history;
 
 /// The largest default History page.
@@ -56,7 +56,7 @@ async fn read(
         .start()
         .await?;
     let (public, position) = super::head(&*conn, &id).await?;
-    let (target, under) = bind_targets(&*conn, &id, &s).await?;
+    let bound = bind_targets(&*conn, &id, &s).await?;
     // Oldest first continues after the cursor. Newest first continues before it.
     let (low, high) = match (s.cursor, s.newest) {
         (Some(p), false) => (s.after.max(p), i64::MAX),
@@ -64,24 +64,17 @@ async fn read(
         (None, _) => (s.after, i64::MAX),
     };
     let order = if s.newest { "DESC" } else { "ASC" };
+    let page = s.limit + 1;
+    let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+        vec![&id, &low, &high, &s.open, &page];
+    params.extend(bound.params());
     let rows = conn
         .query(
             &format!(
                 "SELECT e.position, e.recorded_at::text, e.actor, e.command::text, m.actor, m.marked_at::text, m.reason, m.nodes::text, e.alias, m.alias AS mark_alias FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND e.position<=$3 AND (NOT $4 OR m.position IS NULL) AND {} ORDER BY e.position {order} LIMIT $5",
-                filters(6)
+                bound.clause(6)
             ),
-            &[
-                &id,
-                &low,
-                &high,
-                &s.open,
-                &(s.limit + 1),
-                &s.alias,
-                &s.op,
-                &s.kind,
-                &target,
-                &under,
-            ],
+            &params,
         )
         .await?;
     let next_item: Option<i64> = conn
@@ -92,22 +85,15 @@ async fn read(
         .await?
         .get(0);
     // `total` counts every entry of the read after `after`, also the entries before the cursor.
+    let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![&id, &s.after, &s.open];
+    params.extend(bound.params());
     let total: i64 = conn
         .query_one(
             &format!(
                 "SELECT count(*) FROM joppa.events e LEFT JOIN joppa.history_marks m ON m.workspace=e.workspace AND m.position=e.position WHERE e.workspace=$1 AND e.position>$2 AND (NOT $3 OR m.position IS NULL) AND {}",
-                filters(4)
+                bound.clause(4)
             ),
-            &[
-                &id,
-                &s.after,
-                &s.open,
-                &s.alias,
-                &s.op,
-                &s.kind,
-                &target,
-                &under,
-            ],
+            &params,
         )
         .await?
         .get(0);

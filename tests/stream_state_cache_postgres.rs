@@ -1,9 +1,14 @@
-//! Black-box check of streamed cold state load, skipped summaries, 30k-object LRU cache cap, and peak RSS (ac:ys5ekxs3).
+//! Black-box check of streamed cold state load, skipped summaries, 100k-object LRU cache cap, and peak RSS (ac:ys5ekxs3).
 #[path = "common/pg_plan.rs"]
 mod pg_plan;
 use anyhow::{Context, Result, ensure};
 use joppa::{probe, store};
 use serde_json::{Value, json};
+
+/// The objects of the three workspaces: W1 + W2 fit in the cap of 100 000, W1 + W2 + W3 do not.
+const W1: i64 = 60_000;
+const W2: i64 = 25_000;
+const W3: i64 = 25_000;
 
 fn linux_rss_kb() -> Option<i64> {
     let text = std::fs::read_to_string("/proc/self/status").ok()?;
@@ -127,12 +132,12 @@ async fn write_ping(pool: &pg_plan::Pool, ws: &str, tag: &str) -> Result<(u64, u
 // ac:ys5ekxs3
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL with pg_stat_statements preloaded"]
-async fn cold_state_read_streams_sections_skips_summaries_and_caps_lru_at_30k_objects() -> Result<()>
-{
+async fn cold_state_read_streams_sections_skips_summaries_and_caps_lru_at_100k_objects()
+-> Result<()> {
     let pool = pg_plan::db().await?;
-    let w1 = setup_template_ws(&pool, "lru-w1", 20_000, true).await?;
-    let w2 = setup_template_ws(&pool, "lru-w2", 6_000, false).await?;
-    let w3 = setup_template_ws(&pool, "lru-w3", 6_000, false).await?;
+    let w1 = setup_template_ws(&pool, "lru-w1", W1, true).await?;
+    let w2 = setup_template_ws(&pool, "lru-w2", W2, false).await?;
+    let w3 = setup_template_ws(&pool, "lru-w3", W3, false).await?;
 
     // Drain search queue before measuring so only W2 has a search task later.
     store::search_pending::pass(&pool).await?;
@@ -146,50 +151,34 @@ async fn cold_state_read_streams_sections_skips_summaries_and_caps_lru_at_30k_ob
         (r.get(0), r.get(1))
     };
     ensure!(
-        objs_w1 == 20_000 && summaries_w1 >= 400,
+        objs_w1 == W1 && summaries_w1 >= 400,
         "w1 objs={objs_w1}, summaries={summaries_w1}"
     );
 
-    conn.execute("CREATE EXTENSION IF NOT EXISTS pg_stat_statements", &[])
-        .await?;
-    conn.execute("SELECT pg_stat_statements_reset()", &[])
-        .await?;
+    let reset = "SELECT pg_stat_statements_reset()";
+    let extension = "CREATE EXTENSION IF NOT EXISTS pg_stat_statements";
+    conn.execute(extension, &[]).await?;
+    conn.execute(reset, &[]).await?;
     let rss_before = linux_rss_kb();
 
-    // Cold write in W1 (20k), then W2 (6k -> 26k <= 30k), W3 (6k -> 32k > 30k, W1 leaves -> 12k), then W1 again (32k > 30k, W2 leaves -> {W3, W1} = 26k).
-    ensure!(
-        write_ping(&pool, &w1, "1").await? == (1, 0),
-        "W1 first write must be cold"
-    );
-    ensure!(
-        write_ping(&pool, &w2, "1").await? == (1, 0),
-        "W2 first write must be cold"
-    );
-    ensure!(
-        write_ping(&pool, &w3, "1").await? == (1, 0),
-        "W3 first write must be cold"
-    );
-    ensure!(
-        write_ping(&pool, &w1, "2").await? == (1, 0),
-        "W1 second write reloads and evicts W2"
-    );
-
-    // Warm writes on W1 and W3 prove both stayed in STATES (and debug same_as_rows proves W1 field-by-field!).
-    ensure!(
-        write_ping(&pool, &w1, "3").await? == (0, 1),
-        "W1 must stay in STATES and pass same_as_rows"
-    );
-    ensure!(
-        write_ping(&pool, &w3, "2").await? == (0, 1),
-        "W3 must stay in STATES"
-    );
+    // Cold write in W1 (60k), then W2 (25k -> 85k <= 100k), W3 (25k -> 110k > 100k, W1 leaves
+    // -> 50k), then W1 again (110k > 100k, W2 leaves -> {W3, W1} = 85k). Warm writes on W1 and
+    // W3 prove both stayed in STATES (debug same_as_rows checks W1 field by field).
+    let steps = [
+        (&w1, "1", (1, 0), "W1 first write must be cold"),
+        (&w2, "1", (1, 0), "W2 first write must be cold"),
+        (&w3, "1", (1, 0), "W3 first write must be cold"),
+        (&w1, "2", (1, 0), "W1 second write reloads and evicts W2"),
+        (&w1, "3", (0, 1), "W1 must stay in STATES, same_as_rows"),
+        (&w3, "2", (0, 1), "W3 must stay in STATES"),
+    ];
+    for (ws, tag, want, why) in steps {
+        ensure!(write_ping(&pool, ws, tag).await? == want, "{why}");
+    }
 
     // Build search rows of W2 alone: W2 left STATES, so state_cache::read must reload W2 from DB.
-    conn.execute(
-        "DELETE FROM joppa.search_pending WHERE workspace <> $1",
-        &[&w2],
-    )
-    .await?;
+    let others = "DELETE FROM joppa.search_pending WHERE workspace <> $1";
+    conn.execute(others, &[&w2]).await?;
     let loads_before_search = probe::read(&probe::STATE_LOADS);
     store::search_pending::pass(&pool).await?;
     ensure!(
@@ -203,38 +192,32 @@ async fn cold_state_read_streams_sections_skips_summaries_and_caps_lru_at_30k_ob
     );
 
     let rss_cycle1 = linux_rss_kb();
-    // Run two more full eviction and 20k-object reload cycles to prove freed LRU pages are reused without unbounded growth.
+    // Run two more full eviction and 60k-object reload cycles to prove freed LRU pages are reused without unbounded growth.
     for round in ["r2", "r3"] {
-        ensure!(
-            write_ping(&pool, &w1, &format!("w1-{round}")).await? == (1, 0),
-            "evicted W1 must reload and evict W3 on {round}"
-        );
-        ensure!(
-            write_ping(&pool, &w2, &format!("w2a-{round}")).await? == (0, 1),
-            "W2 must stay warm after W1 evicts W3 on {round}"
-        );
-        ensure!(
-            write_ping(&pool, &w3, &format!("w3-{round}")).await? == (1, 0),
-            "evicted W3 must reload and evict W1 on {round}"
-        );
-        ensure!(
-            write_ping(&pool, &w2, &format!("w2b-{round}")).await? == (0, 1),
-            "W2 bump restores [W3, W2] LRU order on {round}"
-        );
+        let steps = [
+            (&w1, "w1", (1, 0), "evicted W1 must reload and evict W3"),
+            (&w2, "w2a", (0, 1), "W2 must stay warm after W1 evicts W3"),
+            (&w3, "w3", (1, 0), "evicted W3 must reload and evict W1"),
+            (&w2, "w2b", (0, 1), "W2 bump restores [W3, W2] LRU order"),
+        ];
+        for (ws, tag, want, why) in steps {
+            let got = write_ping(&pool, ws, &format!("{tag}-{round}")).await?;
+            ensure!(got == want, "{why} on {round}");
+        }
     }
 
     if let (Some(before), Some(c1), Some(after)) = (rss_before, rss_cycle1, linux_rss_kb()) {
         let steady_delta_kb = after - c1;
         println!(
-            "LRU 30k VmRSS before={before} kB, cycle1={c1} kB, after_3_cycles={after} kB, steady_delta={steady_delta_kb} kB"
+            "LRU 100k VmRSS before={before} kB, cycle1={c1} kB, after_3_cycles={after} kB, steady_delta={steady_delta_kb} kB"
         );
         ensure!(
-            after < 327_680,
-            "VmRSS {after} kB exceeded 320 MB across 32,000 objects and 8,000 notes"
+            after < 512_000,
+            "VmRSS {after} kB exceeded 500 MB across 110,000 objects and 8,000 notes"
         );
         ensure!(
-            steady_delta_kb < 32_768,
-            "VmRSS grew by {steady_delta_kb} kB (>= 32 MB) across two extra 20k-object LRU reload cycles"
+            steady_delta_kb < 49_152,
+            "VmRSS grew by {steady_delta_kb} kB (>= 48 MB) across two extra 60k-object LRU reload cycles"
         );
     }
 
@@ -245,8 +228,7 @@ async fn cold_state_read_streams_sections_skips_summaries_and_caps_lru_at_30k_ob
         )
         .await?
         .get(0);
-    conn.execute("SELECT pg_stat_statements_reset()", &[])
-        .await?;
+    conn.execute(reset, &[]).await?;
     ensure!(
         write_ping(&pool, &w1, "sql-rows").await? == (1, 0),
         "W1 must reload cold to measure exact SQL rows"

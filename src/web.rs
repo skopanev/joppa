@@ -26,11 +26,24 @@ struct App {
     embedder: Option<joppa::embeddings::Embedder>,
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;
+/// A request that takes this many milliseconds or more writes one line to the log.
+pub(crate) const SLOW_REQUEST_MS: u128 = 500;
+
 async fn no_store(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
+    // The path has no query, so the log holds no token and no search text. The MCP route
+    // writes its own line with the tool and the workspace.
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let start = std::time::Instant::now();
     let mut response = next.run(request).await;
+    let ms = start.elapsed().as_millis();
+    if ms >= SLOW_REQUEST_MS && path != "/mcp" {
+        let status = response.status().as_u16();
+        eprintln!("joppa: slow http method={method} path={path} status={status} ms={ms}");
+    }
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());

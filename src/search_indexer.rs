@@ -16,6 +16,8 @@ pub const MAX_ATTEMPTS: i32 = 5;
 pub const RETRY_EVERY: Duration = Duration::from_secs(300);
 pub const RECONCILE_EVERY: Duration = Duration::from_secs(3600);
 const BATCH: usize = 16;
+/// The batches of one pass at one time: 2 of the 4 provider slots stay free for the queries.
+pub const INDEXER_CONCURRENCY: usize = 2;
 
 static WAKE: OnceLock<Arc<Notify>> = OnceLock::new();
 
@@ -121,7 +123,7 @@ async fn pending(pool: &Pool) -> Result<Vec<Row>> {
     }
     let rows = conn.query("SELECT 'search_documents',workspace,kind||':'||local_id,0,title,content,content_hash FROM joppa.search_documents WHERE (embedding IS NULL OR embedding_profile IS DISTINCT FROM $1) AND attempts<$2
         UNION ALL SELECT 'search_revisions',workspace,address,revision,title,content,content_hash FROM joppa.search_revisions WHERE (embedding IS NULL OR embedding_profile IS DISTINCT FROM $1) AND attempts<$2
-        ORDER BY 1,2,3,4 LIMIT $3", &[&PROFILE, &MAX_ATTEMPTS, &((BATCH * crate::embeddings_limit::CONCURRENCY) as i64)]).await?;
+        ORDER BY 1,2,3,4 LIMIT $3", &[&PROFILE, &MAX_ATTEMPTS, &((BATCH * INDEXER_CONCURRENCY) as i64)]).await?;
     // The connection goes back to the pool before any provider request.
     drop(conn);
     Ok(rows
@@ -141,7 +143,7 @@ async fn pending(pool: &Pool) -> Result<Vec<Row>> {
         .collect())
 }
 
-/// One pass: up to 4 batches of 16 pending rows. Returns the rows that it settled.
+/// One pass: up to 2 batches of 16 pending rows. Returns the rows that it settled.
 pub async fn pass(pool: &Pool, embedder: &Embedder) -> Result<usize> {
     super::search_pending::pass(pool).await?;
     let rows = pending(pool).await?;
@@ -239,12 +241,9 @@ async fn save(pool: &Pool, row: &Row, vector: &[f32]) -> Result<()> {
 
 async fn attempt(pool: &Pool, row: &Row, error: &str) -> Result<()> {
     let (filter, table) = target(row);
-    pool.get()
-        .await?
-        .execute(
-            &format!("UPDATE joppa.{table} SET attempts=attempts+1,last_error=$5 WHERE {filter}"),
-            &[&row.workspace, &row.key, &row.hash, &row.revision, &error],
-        )
-        .await?;
+    let sql = format!("UPDATE joppa.{table} SET attempts=attempts+1,last_error=$5 WHERE {filter}");
+    let params: [&(dyn tokio_postgres::types::ToSql + Sync); 5] =
+        [&row.workspace, &row.key, &row.hash, &row.revision, &error];
+    pool.get().await?.execute(&sql, &params).await?;
     Ok(())
 }

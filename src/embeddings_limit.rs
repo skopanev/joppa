@@ -1,6 +1,7 @@
 //! The provider limits of the indexer and of the query: at most 4 requests at one time and
 //! at most 200 requests in each 60 seconds. A rejected input is its own error class, so the
-//! indexer counts an attempt only when the text itself is the cause.
+//! indexer counts an attempt only when the text itself is the cause. A breaker stops the query
+//! vectors for 30 seconds after 2 transient provider failures in sequence.
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
@@ -8,6 +9,8 @@ use tokio::time::Instant;
 pub const CONCURRENCY: usize = 4;
 pub const PER_WINDOW: usize = 200;
 pub const WINDOW: Duration = Duration::from_secs(60);
+pub const BREAKER_FAILURES: usize = 2;
+pub const BREAKER_COOLDOWN: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct Limits {
@@ -45,6 +48,43 @@ impl Limits {
             let open = sent[0] + WINDOW;
             drop(sent);
             tokio::time::sleep_until(open).await;
+        }
+    }
+}
+
+/// The transient provider failures in sequence and the end of the open time. Each embedder
+/// has its own breaker. A success closes it, and an input fault does not count.
+#[derive(Clone, Default)]
+pub struct Breaker(Arc<std::sync::Mutex<(usize, Option<Instant>)>>);
+
+impl Breaker {
+    /// True while the breaker is open: a query then gets no vector at once.
+    pub fn is_open(&self) -> bool {
+        let state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        state.1.is_some_and(|until| Instant::now() < until)
+    }
+
+    /// Count one transient failure. The failure BREAKER_FAILURES in sequence opens the breaker.
+    pub fn fail(&self) {
+        let mut state = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        state.0 += 1;
+        if state.0 >= BREAKER_FAILURES {
+            state.1 = Some(Instant::now() + BREAKER_COOLDOWN);
+        }
+    }
+
+    /// A success closes the breaker and clears the count.
+    pub fn succeed(&self) {
+        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = (0, None);
+    }
+
+    /// Count the error of a request when it is transient: a transport error, a timeout, HTTP
+    /// 429 or HTTP 500 and above.
+    pub fn record(&self, error: &anyhow::Error) {
+        let status = error.downcast_ref::<ProviderStatus>().map(|s| s.0);
+        let transport = error.chain().any(|c| c.is::<reqwest::Error>());
+        if transport || status.is_some_and(|s| s == 429 || s >= 500) {
+            self.fail();
         }
     }
 }
@@ -117,6 +157,28 @@ mod tests {
         let blocked = tokio::time::timeout(Duration::from_secs(1), limits.admit()).await;
         assert!(blocked.is_err(), "a fifth request must wait for a slot");
         permits.len()
+    }
+
+    // ac:SPEEDSEARCH
+    #[tokio::test(start_paused = true)]
+    async fn two_transient_failures_open_the_breaker_for_30_seconds() {
+        let breaker = Breaker::default();
+        breaker.record(&InputFault(422).into());
+        breaker.record(&ProviderStatus(401).into());
+        breaker.record(&ProviderStatus(503).into());
+        assert!(!breaker.is_open(), "input faults and 401 do not count");
+        breaker.record(&ProviderStatus(429).into());
+        assert!(breaker.is_open());
+        tokio::time::advance(BREAKER_COOLDOWN - Duration::from_millis(1)).await;
+        assert!(breaker.is_open());
+        tokio::time::advance(Duration::from_millis(1)).await;
+        assert!(!breaker.is_open());
+        breaker.fail();
+        assert!(breaker.is_open(), "the next failure opens it again");
+        breaker.succeed();
+        assert!(!breaker.is_open());
+        breaker.fail();
+        assert!(!breaker.is_open(), "a success clears the count");
     }
 
     #[test]

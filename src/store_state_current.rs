@@ -141,7 +141,7 @@ pub(crate) async fn hydrate_command(
     command: &Value,
 ) -> Result<()> {
     let mut addresses = vec![];
-    if command["op"] == "set_tree_schema" {
+    if command["op"] == "set_tree_schema" && reloads(state, command) {
         addresses.extend(state.unloaded_objects.iter().cloned());
     }
     if let (Some(kind), Some(id)) = (command["kind"].as_str(), command["id"].as_str()) {
@@ -153,4 +153,26 @@ pub(crate) async fn hydrate_command(
     hydrate_objects(client, workspace, state, &addresses).await?;
     hydrate_objects(client, workspace, previous, &addresses).await?;
     Ok(())
+}
+
+/// True when a schema write needs the whole rows of the compact objects: before the body
+/// migration, or when the write changes whether the type of a compact object is compact. A
+/// compact type is an Inbox type of role group or document that is no source.
+fn reloads(state: &Workspace, command: &Value) -> bool {
+    if !state.body_migrated {
+        return true;
+    }
+    let types = crate::objects::schema(state).types;
+    let compact = |t: &Value| {
+        t["inbox"] == true
+            && ["group", "document"].contains(&t["role"].as_str().unwrap_or_default())
+            && t["source"] != true
+    };
+    let kinds: std::collections::BTreeSet<&str> = (state.unloaded_objects.iter())
+        .filter_map(|address| address.split_once(':').map(|(kind, _)| kind))
+        .collect();
+    kinds.into_iter().any(|kind| {
+        let old = types.get(kind).and_then(|t| serde_json::to_value(t).ok());
+        compact(&old.unwrap_or_default()) != compact(&command["types"][kind])
+    })
 }

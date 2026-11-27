@@ -18,7 +18,7 @@ use std::sync::{LazyLock, Mutex};
 type Key = (i64, String);
 
 /// The most objects of the kept states together.
-const CAP: usize = 30_000;
+const CAP: usize = 100_000;
 
 /// The kept states, each with its key and the tick of its last use.
 #[derive(Default)]

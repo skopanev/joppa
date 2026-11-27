@@ -19,6 +19,17 @@ pub(in crate::store) async fn project(
     workspace: &str,
     state: &Workspace,
 ) -> Result<()> {
+    project_with(client, workspace, state, None).await
+}
+
+/// `project` with the results that a full rebuild read already, with the fields of the
+/// dimensions, for criteria that include those of this projection.
+pub(in crate::store) async fn project_with(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &Workspace,
+    loaded: Option<super::reports::Loaded>,
+) -> Result<()> {
     let dimensions = dims::dimensions(state);
     if dimensions.is_empty() {
         let sql = "UPDATE joppa.objects SET dims=NULL,dim_tones=NULL WHERE workspace=$1 AND (dims IS NOT NULL OR dim_tones IS NOT NULL)";
@@ -45,9 +56,13 @@ pub(in crate::store) async fn project(
         .collect();
     let (criteria, rules) = super::reports::criteria_and_rules(state, &tested)?;
     let keys: Vec<String> = dimensions.iter().map(|d| d.field.clone()).collect();
-    let (reports, results) =
-        super::reports::results_of(client, workspace, &criteria, &keys, rules.reset_on_change)
-            .await?;
+    let (reports, results) = match loaded {
+        Some(loaded) => loaded,
+        None => {
+            let reset = rules.reset_on_change;
+            super::reports::results_of(client, workspace, &criteria, &keys, reset).await?
+        }
+    };
     let checks = crate::manual_checks::Checks::of(state, &tested);
     let mut tones: BTreeMap<String, BTreeMap<String, &'static str>> = BTreeMap::new();
     for combination in &combinations {

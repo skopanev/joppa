@@ -40,9 +40,28 @@ pub(super) async fn state_criterion_statuses(
     if targets.is_empty() {
         return Ok(Default::default());
     }
+    let (statuses, _) = state_statuses_with(client, workspace, state, targets, &[]).await?;
+    Ok(statuses)
+}
+
+/// The reports and the results that one read of joppa.test_results gives.
+pub(in crate::store) type Loaded = (std::sync::Arc<Vec<Report>>, Vec<(i64, TestResult)>);
+
+/// `state_criterion_statuses` with the fields `keys` of each result, and the loaded results
+/// too, so a full rebuild reads joppa.test_results once for the statuses and the dimensions.
+pub(in crate::store) async fn state_statuses_with(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &crate::model::Workspace,
+    targets: &[String],
+    keys: &[String],
+) -> Result<(std::collections::BTreeMap<String, Value>, Loaded)> {
+    if targets.is_empty() {
+        return Ok(Default::default());
+    }
     let (criteria, rules) = criteria_and_rules(state, targets)?;
     let checks = crate::manual_checks::Checks::of(state, targets);
-    statuses_for_criteria(client, workspace, criteria, &rules, &checks).await
+    statuses_for_criteria(client, workspace, criteria, &rules, &checks, keys).await
 }
 
 #[path = "store_reports_criteria.rs"]
@@ -55,17 +74,17 @@ async fn statuses_for_criteria(
     criteria: Vec<(String, Option<Listed>, Boundary)>,
     rules: &crate::result_shape::ResultShape,
     checks: &crate::manual_checks::Checks,
-) -> Result<std::collections::BTreeMap<String, Value>> {
+    keys: &[String],
+) -> Result<(std::collections::BTreeMap<String, Value>, Loaded)> {
     crate::probe::count(&crate::probe::STATUS);
     if criteria.is_empty() {
         return Ok(Default::default());
     }
     let reset = rules.reset_on_change;
-    let (reports, results) = results_of(client, workspace, &criteria, &[], reset).await?;
+    let (reports, results) = results_of(client, workspace, &criteria, keys, reset).await?;
     let mut statuses = compute(criteria, &reports, &results, rules, checks)?;
-    drop(results);
     super::reports_details::fill(client, workspace, &mut statuses, rules).await?;
-    Ok(statuses)
+    Ok((statuses, (reports, results)))
 }
 
 /// The reports of the workspace and the results of the tests of `criteria` that can still decide

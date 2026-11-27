@@ -28,8 +28,14 @@ pub(in crate::store) async fn rebuild(
     crate::probe::count(&crate::probe::REBUILD);
     let types = crate::objects::schema(state).types;
     let addresses: Vec<String> = state.objects.keys().cloned().collect();
-    let statuses =
-        super::reports::state_criterion_statuses(client, workspace, state, &addresses).await?;
+    // One read of joppa.test_results gives the statuses and, with the fields of the
+    // dimensions, the tones of each combination.
+    let dimensions = crate::filter_dimensions::dimensions(state);
+    let keys: Vec<String> = dimensions.iter().map(|d| d.field.clone()).collect();
+    let (statuses, loaded) =
+        super::reports::state_statuses_with(client, workspace, state, &addresses, &keys).await?;
+    // Without dimensions the results leave memory at once.
+    let loaded = (!dimensions.is_empty()).then_some(loaded);
     let rows: Vec<Value> = statuses
         .iter()
         .map(|(address, status)| json!({"address":address,"value":status}))
@@ -64,7 +70,7 @@ pub(in crate::store) async fn rebuild(
     }
     crate::store::stream::trim_heap();
     super::computed::rebuild(client, workspace, state).await?;
-    super::dimensions::project(client, workspace, state).await
+    super::dimensions::project_with(client, workspace, state, loaded).await
 }
 
 /// The stored rollup of one row: each decoration field that differs from the base row. An

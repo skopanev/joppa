@@ -48,8 +48,7 @@ pub(crate) fn affected(
     let Some(previous) = previous else {
         return Ok(None);
     };
-    if serde_json::to_value(crate::objects::schema(state))?
-        != serde_json::to_value(crate::objects::schema(previous))?
+    if !super::schema_rules::projection_schema_same(state, previous)?
         || state.members != previous.members
         || state.admin != previous.admin
     {
