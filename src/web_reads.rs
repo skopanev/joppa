@@ -198,9 +198,25 @@ pub(super) async fn objects(
             },
         )
         .await
+        .map(|reply| derived_one(reply, q.address.is_some(), fields.as_deref()))
         .map(merged)
         .map(|reply| joppa::read_shapes::keep_item_fields(reply, fields.as_deref())),
     )
+}
+
+/// A read of one address gives the derived fields that `fields` names, such as excerpt.
+fn derived_one(mut reply: Value, one: bool, fields: Option<&[String]>) -> Value {
+    let Some(fields) = fields.filter(|_| one) else {
+        return reply;
+    };
+    let named = joppa::read_compact::object_fields(&reply, None, fields);
+    for field in fields
+        .iter()
+        .filter(|f| joppa::read_compact::DERIVED.contains(&f.as_str()))
+    {
+        reply[field.as_str()] = named[field.as_str()].clone();
+    }
+    reply
 }
 pub(super) async fn tree_schema(
     State(app): State<App>,

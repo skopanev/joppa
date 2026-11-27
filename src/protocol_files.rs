@@ -22,7 +22,7 @@ pub fn tools() -> [Value; 2] {
                 "request_id":text("the same value only for an identical retry"),
                 "check_result":{"type":"string","enum":["pass","fail"],"description":"a manual check of a criterion"},
                 "valid_until":text("YYYY-MM-DD (UTC): the end of a pass")}),
-            json!(["workspace", "target", "filename"]),
+            json!(["target", "filename"]),
         ),
         super::tool(
             "joppa_attachments",
@@ -31,7 +31,7 @@ pub fn tools() -> [Value; 2] {
                 "removed":{"type":"boolean","description":"also the files detached in the last 14 days"},
                 "limit":{"type":"integer","minimum":1,"maximum":100,"description":"1 to 100; without it, all files"},
                 "cursor":text(CURSOR)}),
-            json!(["workspace", "target"]),
+            json!(["target"]),
         ),
     ]
 }

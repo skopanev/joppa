@@ -21,7 +21,14 @@ const TOOLS: [&str; 11] = [
 ];
 
 /// The keys that can hold a public item ID, which names its own workspace.
-const ID_KEYS: [&str; 3] = ["address", "parent", "target"];
+const ID_KEYS: [&str; 6] = [
+    "address",
+    "parent",
+    "target",
+    "related_to",
+    "relations_of",
+    "under",
+];
 
 /// The arguments with a workspace, or None when the call has one or needs none.
 pub(super) async fn with_workspace(
@@ -31,8 +38,7 @@ pub(super) async fn with_workspace(
     a: &Value,
 ) -> anyhow::Result<Option<Value>> {
     let sent = a["workspace"].as_str().is_some_and(|w| !w.is_empty());
-    let none_needed = (name == "joppa_search" && a["all_workspaces"] == true)
-        || (name == "joppa_help" && a["section"] != "examples");
+    let none_needed = name == "joppa_help" && a["section"] != "examples";
     if sent || none_needed || !TOOLS.contains(&name) {
         return Ok(None);
     }
@@ -48,15 +54,18 @@ pub(super) async fn with_workspace(
         .filter(|key| !key.is_empty() && !key.contains(':') && *key != "*")
         .map(str::to_owned)
         .collect();
-    out["workspace"] = match ids.is_empty() {
-        false => json!(store::item_workspace(pool, actor, &ids).await?),
-        true => json!(only_workspace(pool, actor).await?),
+    // A search of every workspace starts from the first of them.
+    let all = name == "joppa_search" && a["all_workspaces"] == true;
+    out["workspace"] = match (ids.is_empty(), all) {
+        (false, _) => json!(store::item_workspace(pool, actor, &ids).await?),
+        (true, all) => json!(only_workspace(pool, actor, all).await?),
     };
     Ok(Some(out))
 }
 
-/// The one workspace that `actor` reads, else a refusal that names the choices.
-async fn only_workspace(pool: &Pool, actor: &str) -> anyhow::Result<String> {
+/// The one workspace that `actor` reads, else a refusal that names the choices. With `first`,
+/// the first of the sorted workspaces.
+async fn only_workspace(pool: &Pool, actor: &str, first: bool) -> anyhow::Result<String> {
     let listed = store::list(pool, actor).await?;
     let mut ids: Vec<String> = listed
         .as_array()
@@ -67,6 +76,7 @@ async fn only_workspace(pool: &Pool, actor: &str) -> anyhow::Result<String> {
     ids.sort();
     match ids.len() {
         0 => anyhow::bail!("missing workspace"),
+        _ if first => Ok(ids.remove(0)),
         1 => Ok(ids.remove(0)),
         _ => anyhow::bail!("missing workspace: choose one of {}", ids.join(", ")),
     }
