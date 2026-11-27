@@ -14,19 +14,21 @@ pub(super) const WORKSPACE: &str = "workspace key or alias";
 /// The status tones of the status filter.
 const TONES: &str = "tone or list: red, purple, yellow, orange, blue, green";
 
+fn one_or_list(description: &str) -> Value {
+    json!({"type":["string","array"],"items":{"type":"string"},"description":description})
+}
+
 /// The node filters that joppa_objects and joppa_search take in the same form
-/// (src/node_filter.rs). All filters must match. joppa_objects describes them; joppa_search
+/// (src/node_filter.rs). All filters must match. joppa_objects describes them, and joppa_search
 /// names joppa_objects, so the texts come once.
 fn node_filters(mut schema: Value, full: bool) -> Value {
-    let one_or_list =
-        |d: &str| json!({"type":["string","array"],"items":{"type":"string"},"description":d});
     let filters = json!({
-        "parent": text("address or public item ID: its children; * for every level"),
+        "parent": text("address or public item ID: its children, or * for every level"),
         "depth": {"type":"integer","minimum":1,"maximum":100,"description":"levels below parent, default 1"},
         "kind": one_or_list("type name or list"),
-        "status": one_or_list(&format!("{TONES}; purple keeps archived nodes")),
+        "status": one_or_list(&format!("{TONES} (purple keeps archived nodes)")),
         "owner": text("member ID in data.owner"),
-        "assignee": text("member ID or agent alias; \"\" for no assignee"),
+        "assignee": text("member ID or agent alias, or \"\" for no assignee"),
         "data": {"type":"object","description":"containment filter on data, e.g. {\"stage\":\"done\"}"},
     });
     for (name, value) in filters.as_object().into_iter().flatten() {
@@ -47,7 +49,7 @@ fn node_filters(mut schema: Value, full: bool) -> Value {
 pub(super) fn objects() -> Value {
     node_filters(
         json!({
-            "workspace": text("key or alias; optional with a public item ID"),
+            "workspace": text("key or alias, optional with item ID"),
             "address": text("1 to 100 addresses or item IDs, comma-separated"),
             "fields": {"type":"array","items":{"type":"string"},
                 "description":"on a list and on an address read: title, revision, body, status, children, relations, comments, files, child_counts, references, parent_changed, blocked, dependents or a data name"},
@@ -69,7 +71,7 @@ pub(super) fn objects() -> Value {
             "has_tests": {"type":"boolean","description":"has test nodes"},
             "comment_prefix": text("active comment ID prefix"),
             "blocked": {"type":"boolean","description":"waits on open work"},
-            "order": text("dependents desc,priority,age"),
+            "order": one_or_list("dependents desc,priority,age"),
         }),
         true,
     )
@@ -83,8 +85,8 @@ pub(super) fn search() -> Value {
             "query": {"type":"string","minLength":1,"maxLength":2000,"description":"words or a copied public ID"},
             "limit": {"type":"integer","minimum":1,"maximum":25,"description":"1 to 25, default 10"},
             "cursor": text(CURSOR),
-            "all_versions": {"type":"boolean","description":"also past revisions and archived (purple) objects"},
-            "all_workspaces": {"type":"boolean","description":"each workspace that you can read"},
+            "all_versions": {"type":"boolean","description":"also past revisions and archived objects"},
+            "all_workspaces": {"type":"boolean","description":"every readable workspace"},
             "fields": {"type":"array","description":"title, excerpt, revision, status"},
         }),
         false,

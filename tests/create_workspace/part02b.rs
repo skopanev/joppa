@@ -44,14 +44,14 @@ async fn billing_is_created_owned_and_refused_as_specified(
             let conn = pool.get().await?;
             let rows = conn
                 .query(
-                    "SELECT actor,request_id,input::text FROM joppa.command_receipts WHERE workspace=$1",
+                    "SELECT actor,request_id,input::text FROM joppa.command_receipts WHERE workspace=COALESCE((SELECT workspace FROM joppa.workspace_aliases WHERE name=$1),$1)",
                     &[&workspace],
                 )
                 .await?;
             ensure!(rows.len() == 1, "one request per creation");
             let creations: i64 = conn
                 .query_one(
-                    "SELECT count(*) FROM joppa.events WHERE workspace=$1 AND command->>'op'='workspace'",
+                    "SELECT count(*) FROM joppa.events WHERE workspace=COALESCE((SELECT workspace FROM joppa.workspace_aliases WHERE name=$1),$1) AND command->>'op'='workspace'",
                     &[&workspace],
                 )
                 .await?
@@ -135,7 +135,7 @@ async fn billing_is_created_owned_and_refused_as_specified(
         .get()
         .await?
         .execute(
-            "DELETE FROM joppa.state_entries WHERE workspace=$1 AND section='members' AND key=$2",
+            "DELETE FROM joppa.state_entries WHERE workspace=COALESCE((SELECT workspace FROM joppa.workspace_aliases WHERE name=$1),$1) AND section='members' AND key=$2",
             &[&second_id, &alex],
         )
         .await?;

@@ -71,9 +71,12 @@ pub(super) async fn create_workspace(
     };
     let request_id = uuid::Uuid::new_v4().to_string();
     result(
-        store::execute(&app.pool, &workspace, &actor, &request_id, &command)
-            .await
-            .map(|_| json!({"id": workspace, "title": body.title})),
+        match store::execute(&app.pool, &workspace, &actor, &request_id, &command).await {
+            Ok(_) => store::public_id(&app.pool, &workspace)
+                .await
+                .map(|id| json!({"id": id, "title": body.title})),
+            Err(e) => Err(e),
+        },
     )
 }
 pub(super) async fn list_email_grants(State(app): State<App>, headers: HeaderMap) -> ApiResult {
@@ -129,9 +132,12 @@ pub(super) async fn rename_workspace(
     });
     let request_id = uuid::Uuid::new_v4().to_string();
     result(
-        store::execute(&app.pool, &workspace, &actor, &request_id, &command)
-            .await
-            .map(|_| json!({"id": workspace, "title": body.title})),
+        match store::execute(&app.pool, &workspace, &actor, &request_id, &command).await {
+            Ok(_) => store::public_id(&app.pool, &workspace)
+                .await
+                .map(|id| json!({"id": id, "title": body.title})),
+            Err(e) => Err(e),
+        },
     )
 }
 #[derive(Deserialize)]

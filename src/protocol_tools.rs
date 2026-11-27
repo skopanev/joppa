@@ -16,7 +16,7 @@ pub(super) fn list() -> Vec<Value> {
     let mut tools = vec![
         tool(
             "joppa_list",
-            "List your workspaces: items {id, title, hidden}. hidden: true means that you hid it from your web lists.",
+            "List your workspaces: items {id, title, hidden}. hidden: true marks a workspace hidden in web.",
             json!({"cursor":text(CURSOR)}),
             json!([]),
         ),
@@ -34,7 +34,7 @@ pub(super) fn list() -> Vec<Value> {
         ),
         tool(
             "joppa_objects",
-            "Read objects. Without address: a page of items {address, title, status, assignee}. With address: one object with revision, parent, data, status, process, relations and relation_groups; 2 to 100 addresses give {items}. relations_of gives edges in pages. A reply over 256 KB is refused.",
+            "Read objects. Without address: a page of items {address, title, status, assignee}. With address: one object with revision, parent, data, status, process, relations and relation_groups, or {items} for 2 to 100. relations_of pages edges. Replies over 256 KB are refused.",
             schemas::objects(),
             json!([]),
         ),
@@ -101,7 +101,7 @@ fn command_schema() -> Value {
             "revision":{"description":"the revision you read; 0 creates"},
             "relations":{"type":"object","description":"save_object: key -> {edges: [{to}]}; null removes a key"},
             "clean":{"type":"boolean","description":"true replaces data whole"},
-            "data":{"type":"object","description":"save_object: title, body, owner and typed fields. data.owner is the member ID of a human owner, required on every save"},
+            "data":{"type":"object","description":"save_object: title, body, owner and typed fields. data.owner: the member ID of a human owner, required on every save"},
             "text":rules(), "reason":rules(), "value":rules()
         }
     })

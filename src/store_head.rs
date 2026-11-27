@@ -12,3 +12,10 @@ pub(crate) async fn head(client: &impl GenericClient, workspace: &str) -> Result
         .await?;
     Ok((row.get(0), row.get(1)))
 }
+
+/// The public workspace ID after a write, or `workspace` when none is set.
+pub async fn public_id(pool: &Pool, workspace: &str) -> Result<String> {
+    let conn = pool.get().await?;
+    let workspace = resolve_workspace(&**conn, workspace).await?;
+    Ok(head(&**conn, &workspace).await?.0)
+}

@@ -192,7 +192,7 @@ pub fn from_args(a: &Value) -> Result<Option<Order>> {
     let other = ["address", "relations_of", "in_relation", "group_by"];
     let other = other.iter().any(|k| !a[*k].is_null()) || a["count"] == true;
     ensure!(
-        order.is_none() || !other,
+        a["order"].is_null() || !other,
         "order applies only to object list reads"
     );
     Ok(order)

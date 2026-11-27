@@ -53,6 +53,7 @@ pub(crate) mod remote;
 #[path = "store_remote_status.rs"]
 pub(crate) mod remote_status;
 pub(crate) use head::head;
+pub use head::public_id;
 #[path = "store_history.rs"]
 mod history;
 #[path = "store_public_ids.rs"]

@@ -94,6 +94,7 @@ fn schema_supports_custom_grouping_without_a_capability() {
             badge: None,
             title_preview_length: None,
             field_max_length: None,
+            done: None,
             reset_on_change: None,
             parent_gate: None,
             title: "Initiative".into(),

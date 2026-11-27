@@ -40,6 +40,18 @@ pub(super) async fn sorted(
         true => crate::dependency_order::priorities(conn, workspace).await?,
         false => vec![],
     };
+    let narrowed: std::collections::BTreeMap<String, objects::TreeType>;
+    let types = match &scope.filter.kinds {
+        Some(kinds) => {
+            narrowed = types
+                .iter()
+                .filter(|(k, _)| kinds.contains(k))
+                .map(|(k, t)| (k.clone(), t.clone()))
+                .collect();
+            &narrowed
+        }
+        None => types,
+    };
     let inputs = Inputs {
         facts: facts.as_ref().map(crate::dependency_sql::Facts::json),
         priorities: &priorities,

@@ -130,13 +130,15 @@ fn order_applies_only_to_lists() {
     assert!(from_args(&json!({"order": "age"})).unwrap().is_some());
     assert!(from_args(&json!({"order": "age", "count": false})).is_ok());
     for key in ["address", "relations_of", "in_relation", "group_by"] {
-        let refusal = from_args(&json!({"order": "age", key: "x"})).unwrap_err();
-        assert_eq!(
-            refusal.to_string(),
-            "order applies only to object list reads"
-        );
+        for ord in [json!("age"), json!("address"), json!(["address asc"])] {
+            let refusal = from_args(&json!({"order": ord, key: "x"})).unwrap_err();
+            assert_eq!(
+                refusal.to_string(),
+                "order applies only to object list reads"
+            );
+        }
     }
-    assert!(from_args(&json!({"order": "age", "count": true})).is_err());
+    assert!(from_args(&json!({"order": "address", "count": true})).is_err());
     assert!(from_args(&json!({"address": "ac:a"})).unwrap().is_none());
 }
 
