@@ -92,7 +92,10 @@ async fn one_read_gives_up_to_25_objects_with_their_addresses() -> Result<()> {
             json!({"address":"ac:a,requirement:r","comments_cursor":"25"}),
             one_address,
         ),
-        (json!({"address":"nope:x"}), "unknown object: nope:x"),
+        (
+            json!({"address":"nope:x"}),
+            "unknown object: nope:x (unknown type nope, valid types are ac, requirement, test)",
+        ),
     ];
     for (args, error) in refused {
         let reply = read(&w, args.clone()).await?;

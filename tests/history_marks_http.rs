@@ -39,10 +39,7 @@ async fn required(w: &World) -> Result<Value> {
 #[ignore = "requires isolated JOPPA_TEST_DATABASE_URL"]
 async fn one_mark_closes_up_to_25_positions() -> Result<()> {
     let w = record_world::world(&[]).await?;
-    ensure!(
-        required(&w).await? == json!(["workspace", "reason"]),
-        "tools/list"
-    );
+    ensure!(required(&w).await? == json!(["reason"]), "tools/list");
     let revision = w.mcp(&w.owner, "joppa_tree", json!({})).await?;
     let revision = revision.map_err(anyhow::Error::msg)?["schema"]["revision"].clone();
     let task = json!({"title":"Tasks","role":"task","status":"none","parents":["ac"]});

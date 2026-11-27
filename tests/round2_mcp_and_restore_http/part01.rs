@@ -12,7 +12,7 @@ async fn record_results_schema_requires_only_workspace_and_results_and_accepts_c
         .find(|t| t["name"] == "joppa_record_results")
         .context("missing joppa_record_results")?;
     ensure!(
-        tool["inputSchema"]["required"] == json!(["workspace", "results"]),
+        tool["inputSchema"]["required"] == json!(["results"]),
         "required: {}",
         tool["inputSchema"]["required"]
     );

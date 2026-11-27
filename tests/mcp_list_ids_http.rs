@@ -111,9 +111,13 @@ async fn a_new_object_gets_8_characters_and_a_public_id_reads_like_its_address()
         "{text}"
     );
     let (error, text) = bare(json!({"address":"nope-R-NOPE0000"})).await?;
-    ensure!(error && text == "unknown object", "{text}");
+    ensure!(error && text == "unknown object: nope-R-NOPE0000", "{text}");
     let (error, text) = bare(json!({"parent":"requirement:r"})).await?;
-    ensure!(error && text == "missing workspace", "{text}");
+    ensure!(
+        (!error && serde_json::from_str::<Value>(&text)? == children)
+            || (error && text.starts_with("missing workspace: choose one of ")),
+        "{text}"
+    );
     // An older copy with a 10-character code reads the object of its first 8 characters.
     let old = format!("{ac}XY");
     let by_old = ok(&w, "joppa_objects", json!({"address":old})).await?;
@@ -125,6 +129,9 @@ async fn a_new_object_gets_8_characters_and_a_public_id_reads_like_its_address()
             json!({"address":"nope-R-NOPE0000"}),
         )
         .await?;
-    ensure!(unknown == Err("unknown object".into()), "{unknown:?}");
+    ensure!(
+        unknown == Err("unknown object: nope-R-NOPE0000".into()),
+        "{unknown:?}"
+    );
     Ok(())
 }
