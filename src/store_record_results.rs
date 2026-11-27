@@ -150,7 +150,11 @@ pub async fn record_results(
     let count = results.len();
     let (results, unbound) = super::record_bind::bind(&*tx, &workspace, results).await?;
     if dry {
-        let bound = results.len();
+        // An unbound test stays in results under its own name, so it is not counted.
+        let bound = results
+            .iter()
+            .filter(|r| !unbound.contains(&r.address))
+            .count();
         return Ok(
             json!({"dry_run": true, "commit": commit, "tests": count, "bound": bound, "unbound": unbound}),
         );
