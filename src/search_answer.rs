@@ -84,7 +84,7 @@ pub(super) async fn answer(
             .keys()
             .map(|(w, k, id, rev)| json!({"workspace": w, "kind": k, "id": id, "rev": rev}))
             .collect();
-        for row in candidates::titles(&tx, &json!(keys).to_string()).await? {
+        for row in candidates::titles(&tx, &json!(keys).to_string(), flags.all_versions).await? {
             let key: Key = (row.get(0), row.get(1), row.get(2), row.get(3));
             let boost = candidates::title_boost(row.get(4), query);
             scores.entry(key).and_modify(|s| *s += boost);
@@ -137,12 +137,12 @@ pub(super) async fn answer(
       FROM ROWS FROM (jsonb_to_recordset($1::text::jsonb) AS (workspace text,kind text,id text,rev int,score double precision,exact boolean,item boolean)) WITH ORDINALITY AS k(workspace,kind,id,rev,score,exact,item,n)
       JOIN joppa.search_state s ON s.workspace=k.workspace
       LEFT JOIN joppa.search_documents d ON k.rev<0 AND d.workspace=k.workspace AND d.kind=k.kind AND d.local_id=k.id
-      LEFT JOIN joppa.search_revisions r ON k.rev>=0 AND r.workspace=k.workspace AND r.address=k.kind||':'||k.id AND r.revision=k.rev
+      LEFT JOIN joppa.search_revisions r ON $3::boolean AND k.rev>=0 AND r.workspace=k.workspace AND r.address=k.kind||':'||k.id AND r.revision=k.rev
       LEFT JOIN joppa.objects o ON o.workspace=k.workspace AND o.address=k.kind||':'||k.id
-      LEFT JOIN joppa.object_revisions v ON k.rev>=0 AND v.workspace=k.workspace AND v.address=k.kind||':'||k.id AND v.revision=k.rev
+      LEFT JOIN joppa.object_revisions v ON $3::boolean AND k.rev>=0 AND v.workspace=k.workspace AND v.address=k.kind||':'||k.id AND v.revision=k.rev
       LEFT JOIN joppa.object_aliases a ON a.workspace=k.workspace AND a.target=k.kind||':'||k.id
       JOIN joppa.item_ids i ON i.workspace=k.workspace AND i.kind=COALESCE(split_part(a.address,':',1),k.kind) AND i.local_id=COALESCE(split_part(a.address,':',2),k.id) AND i.namespace=s.reference_prefix
-      ORDER BY k.n", &[&serde_json::to_string(&selected)?, &crate::status_colors::ARCHIVED_TONE]).await?;
+      ORDER BY k.n", &[&serde_json::to_string(&selected)?, &crate::status_colors::ARCHIVED_TONE, &flags.all_versions]).await?;
     let length = if flags.lean { LEAN_EXCERPT } else { EXCERPT };
     let items = rows
         .iter()

@@ -112,10 +112,14 @@ fn title_match(alias: &str) -> String {
 }
 
 /// The title of each key: the current document, else the revision.
-pub(super) async fn titles(tx: &Transaction<'_>, keys: &str) -> Result<Vec<Row>> {
+pub(super) async fn titles(
+    tx: &Transaction<'_>,
+    keys: &str,
+    all_versions: bool,
+) -> Result<Vec<Row>> {
     Ok(tx.query("SELECT k.workspace,k.kind,k.id,k.rev,COALESCE(d.title,r.title,'') FROM jsonb_to_recordset($1::text::jsonb) AS k(workspace text,kind text,id text,rev int)
       LEFT JOIN joppa.search_documents d ON k.rev<0 AND d.workspace=k.workspace AND d.kind=k.kind AND d.local_id=k.id
-      LEFT JOIN joppa.search_revisions r ON k.rev>=0 AND r.workspace=k.workspace AND r.address=k.kind||':'||k.id AND r.revision=k.rev", &[&keys]).await?)
+      LEFT JOIN joppa.search_revisions r ON $2::boolean AND k.rev>=0 AND r.workspace=k.workspace AND r.address=k.kind||':'||k.id AND r.revision=k.rev", &[&keys, &all_versions]).await?)
 }
 
 /// The score that a title adds for `query`: 0.10 for the same text, 0.035 when it holds the
@@ -173,7 +177,8 @@ pub(super) async fn nearest(
     )
     .await?;
     if !all_versions {
-        tx.batch_execute("SET LOCAL enable_seqscan = off").await?;
+        tx.batch_execute("SET LOCAL enable_seqscan = off; SET LOCAL enable_bitmapscan = off")
+            .await?;
     }
     let rows = tx.query(&format!("SELECT workspace,kind,local_id,rev FROM (
         (SELECT d.workspace,d.kind,d.local_id,-1 AS rev,d.embedding <=> $3::text::vector AS distance FROM joppa.search_documents d
@@ -183,7 +188,8 @@ pub(super) async fn nearest(
       ) c ORDER BY distance,workspace,kind,local_id,rev LIMIT 100"),
       &params(vec![&scope, &PROFILE, &vector], &bound.narrows(), bound)).await?;
     if !all_versions {
-        tx.batch_execute("SET LOCAL enable_seqscan = on").await?;
+        tx.batch_execute("SET LOCAL enable_seqscan = on; SET LOCAL enable_bitmapscan = on")
+            .await?;
     }
     Ok(rows)
 }

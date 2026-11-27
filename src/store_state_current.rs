@@ -173,6 +173,13 @@ fn reloads(state: &Workspace, command: &Value) -> bool {
         .collect();
     kinds.into_iter().any(|kind| {
         let old = types.get(kind).and_then(|t| serde_json::to_value(t).ok());
-        compact(&old.unwrap_or_default()) != compact(&command["types"][kind])
+        let next = match command.get("types") {
+            Some(all) => Some(&all[kind]),
+            None => command["put_types"].get(kind),
+        };
+        let removed = command["remove_types"]
+            .as_array()
+            .is_some_and(|list| list.iter().any(|k| k.as_str() == Some(kind)));
+        removed || next.is_some_and(|next| compact(&old.unwrap_or_default()) != compact(next))
     })
 }
