@@ -72,10 +72,14 @@ pub fn lean(tool: &str, args: &Value, mut reply: Value) -> Value {
             drop_value(&mut reply, &["replayed"], &json!(false));
         }
         "joppa_attach" => drop_value(&mut reply, &["replayed"], &json!(false)),
-        // A record gives no commit and no actor; `unbound` stays, also when it is empty.
+        // A record gives no commit and no actor, and `unbound` stays, also when it is empty.
+        // A dry run keeps its commit, so the caller sees what the check read.
         "joppa_record_results" => {
             drop_value(&mut reply, &["replayed"], &json!(false));
-            drop_keys(&mut reply, &["commit", "actor"]);
+            match reply["dry_run"] == true {
+                true => drop_keys(&mut reply, &["actor"]),
+                false => drop_keys(&mut reply, &["commit", "actor"]),
+            }
         }
         // A mark keeps its alias and nodes, and gives no reason (ac:flg87alq).
         "joppa_history_mark" => drop_keys(&mut reply, &["reason"]),

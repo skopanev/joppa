@@ -13,8 +13,11 @@ pub use crate::read_detail::{
 mod fields;
 pub use fields::{
     DETAIL_FIELDS, LIST_DETAIL_FIELDS, card_needs, check_fields, head, list_needs, needs_data,
-    object_fields, parent_hash_facts,
+    object_fields,
 };
+#[path = "read_derived.rs"]
+mod derived;
+pub use derived::{DERIVED, derived, parent_hash_facts, unknown_object};
 
 /// The page size of object lists, comments and edges.
 pub const PAGE: usize = 25;

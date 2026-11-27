@@ -45,3 +45,25 @@ fn a_live_save_refuses_relations_and_links_inside_data_but_accepts_null() {
     relations_in_data(&w, "ac", &json!({"links": null, "relations": null})).unwrap();
     relations_in_data(&w, "ac", &json!({"title": "T"})).unwrap();
 }
+
+#[test]
+fn owner_me_names_the_human_caller_and_an_agent_is_refused() {
+    let mut w = Workspace::default();
+    w.members.insert("ann".into(), "human".into());
+    w.members.insert("bot".into(), "agent".into());
+    let save = || {
+        json!({"op": "save_object", "kind": "ac", "id": "x", "revision": 0,
+        "data": {"title": "T", "owner": "me"}})
+    };
+    let mut sent = save();
+    owner_me(&w, "ann", &mut sent).unwrap();
+    assert_eq!(sent["data"]["owner"], json!("ann"));
+    let error = owner_me(&w, "bot", &mut save()).unwrap_err().to_string();
+    assert_eq!(
+        error,
+        "owner \"me\" requires a human member caller, pass a human member ID"
+    );
+    let mut other = json!({"op": "save_object", "data": {"owner": "carol"}});
+    owner_me(&w, "bot", &mut other).unwrap();
+    assert_eq!(other["data"]["owner"], json!("carol"));
+}

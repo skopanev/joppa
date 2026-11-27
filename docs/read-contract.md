@@ -84,6 +84,10 @@ every node, or absent for the roots. The [node filters](#node-filters) narrow th
   `{"depends_on": {"edges": [{"to": "ac:b"}]}}`, and `{}` for an item without relations.
   An edge with a pinned revision also gives `revision`. A read by address gives its detail
   relations instead.
+- `fields` `["excerpt"]` gives the first 200 characters of the body with single spaces,
+  `["data_keys"]` the sorted names of the data and the computed fields, and
+  `["status_label"]` the label of the status, such as `2/2 passed`. A read by address takes
+  them too. The read without `fields` gives none of them.
 - Items come in address order. `next_cursor` is the address of the last item; the next page
   starts after it, so a new object does not move the items of a later page.
 - A list of an Inbox type (`inbox: true` in `joppa_tree`) keeps the Inbox order: unprocessed

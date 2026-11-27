@@ -111,10 +111,15 @@ pub(crate) fn save_into(
         );
     }
     commands::nonempty(&string(data, "title")?)?;
-    validate_required_fields(
-        schema(w).types.get(kind).context("unknown object type")?,
-        data,
-    )?;
+    let types = schema(w).types;
+    let t = types.get(kind).with_context(|| {
+        let valid: Vec<&str> = types.keys().map(String::as_str).collect();
+        format!(
+            "unknown object type {kind}: valid types are {}",
+            valid.join(", ")
+        )
+    })?;
+    validate_required_fields(t, data)?;
     if w.test_rules_migrated && !w.test_nodes_migrated {
         crate::ac_tests::validate_field(w, kind, data)?;
     }

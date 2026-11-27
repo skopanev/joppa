@@ -23,6 +23,10 @@ struct Record {
     #[serde(default)]
     commit: String,
     results: Vec<Outcome>,
+    /// true checks and binds the record without a write (the reply of the dry run).
+    #[serde(default)]
+    #[allow(dead_code)]
+    dry_run: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,19 +97,26 @@ pub async fn record_results(
     args: &Value,
 ) -> Result<Value> {
     let name = workspace;
+    // A dry run reads only: it takes no writer turn and no write lock.
+    let dry = args["dry_run"] == true;
     // The writers of one workspace wait here, so they hold at most 1 connection.
-    let _turn = super::writer::turn(name).await;
+    let _turn = match dry {
+        false => Some(super::writer::turn(name).await),
+        true => None,
+    };
     let mut conn = pool.get().await?;
-    let tx = conn.transaction().await?;
+    let tx = conn.build_transaction().read_only(dry).start().await?;
     let workspace = resolve_workspace(&*tx, workspace).await?;
     access::check(&*tx, &workspace, actor, false).await?;
     access::refuse_viewer(&*tx, &workspace, actor).await?;
-    super::writer::resolved(name, &workspace);
-    tx.execute(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
-        &[&workspace],
-    )
-    .await?;
+    if !dry {
+        super::writer::resolved(name, &workspace);
+        tx.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,91827102))",
+            &[&workspace],
+        )
+        .await?;
+    }
     // The latest schema revision gives the test rules.
     let shape: ResultShape = tx
         .query_opt("SELECT (value->'test_results')::text FROM joppa.state_revisions WHERE workspace=$1 AND section='tree_schema' AND key='' ORDER BY revision DESC LIMIT 1", &[&workspace])
@@ -138,6 +149,12 @@ pub async fn record_results(
     // Each result binds to its test node. A name with no present test node is unbound.
     let count = results.len();
     let (results, unbound) = super::record_bind::bind(&*tx, &workspace, results).await?;
+    if dry {
+        let bound = results.len();
+        return Ok(
+            json!({"dry_run": true, "commit": commit, "tests": count, "bound": bound, "unbound": unbound}),
+        );
+    }
     let body = serde_json::to_string(&results)?;
     let hash = crate::digest_hex::sha256_hex(format!("record\n{commit}\n{body}").as_bytes());
     let event = |report: i64, repeat: bool| {

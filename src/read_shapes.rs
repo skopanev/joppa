@@ -3,6 +3,15 @@ use serde_json::Value;
 
 /// Keep only the named keys of one list item. The address always stays.
 pub fn keep_fields(item: &mut Value, fields: &[String]) {
+    // A derived field, such as excerpt, comes from the item before the other keys go.
+    let derived: Vec<(&str, Value)> = fields
+        .iter()
+        .filter(|f| item.get(f.as_str()).is_none())
+        .filter_map(|f| crate::read_compact::derived(item, f).map(|v| (f.as_str(), v)))
+        .collect();
+    for (field, value) in derived {
+        item[field] = value;
+    }
     if let Some(map) = item.as_object_mut() {
         map.retain(|key, _| key == "address" || fields.iter().any(|f| f == key));
     }

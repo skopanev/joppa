@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 /// The first path segments that a list item gives itself. `status` is the status tone, and
 /// `relations` gives the stored relations of the item. A read by address gives its detail
 /// relations.
-pub const LIST_FIELDS: [&str; 23] = [
+pub const LIST_FIELDS: [&str; 26] = [
     "address",
     "data",
     "computed",
@@ -32,6 +32,9 @@ pub const LIST_FIELDS: [&str; 23] = [
     "parent_hash_current",
     "parent_changed",
     "contract_hash",
+    "excerpt",
+    "data_keys",
+    "status_label",
 ];
 
 /// The keys of a detail read that a list item does not give. `comments_count` and
@@ -76,6 +79,7 @@ pub fn needs_data(fields: &[String]) -> bool {
     fields.iter().any(|f| {
         let head = head(f);
         head == "data"
+            || head == "data_keys"
             || head == "relations"
             || head == "references"
             || (!LIST_FIELDS.contains(&head) && !DETAIL_FIELDS.contains(&head))
@@ -91,7 +95,7 @@ pub fn card_needs(fields: Option<&[String]>) -> CardNeeds {
     let mut needs = CardNeeds::default();
     for field in fields {
         match head(field) {
-            "data" => needs.document = true,
+            "data" | "data_keys" => needs.document = true,
             "relations" => (needs.document, needs.edges) = (true, true),
             "comments" | "comments_active" | "comments_latest" | "files" | "annotations" => {
                 needs.notes = true
@@ -153,19 +157,6 @@ pub fn check_fields(fields: &[String], known: impl Fn(&str) -> bool) -> Result<(
     Ok(())
 }
 
-/// The parent hash facts of an item (parent_hash.rs): its own contract hash, the stamp of its
-/// revision, the current contract hash of its parent, and whether a stamp differs from it.
-pub fn parent_hash_facts(
-    item: &mut Value,
-    contract: Option<String>,
-    (stamp, current): (Option<String>, Option<String>),
-) {
-    item["contract_hash"] = json!(contract);
-    item["parent_changed"] = json!(stamp.is_some() && stamp != current);
-    item["parent_hash"] = json!(stamp);
-    item["parent_hash_current"] = json!(current);
-}
-
 /// The value at a dotted path, or null.
 pub(crate) fn path(value: &Value, path: &str) -> Value {
     path.split('.')
@@ -176,6 +167,9 @@ pub(crate) fn path(value: &Value, path: &str) -> Value {
 
 /// The value of one path: a list field of `item`, a key of `detail`, or a path in `data`.
 pub fn value(item: &Value, detail: Option<&Value>, field: &str) -> Value {
+    if let Some(value) = super::derived::derived(item, field) {
+        return value;
+    }
     let head = head(field);
     match detail {
         // `status` is the tone, as in a plain list item; `note_status` names the Inbox state.

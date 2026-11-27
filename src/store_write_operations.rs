@@ -86,6 +86,7 @@ pub(crate) async fn write(
             super::public_ids::canonical(&*tx, &workspace, &state, &mut value).await?;
             state_rows::hydrate_command(&*tx, &workspace, &mut state, &mut previous, &value).await?;
             state_rows::hydrate_revision(&*tx, &workspace, &mut state, &value).await?;
+            crate::save_merge::owner_me(&state, actor, &mut value)?;
             crate::write_key::check_operation(&state, actor, &value, clean)?;
             // A requirement save after the criterion saves of this batch takes their forced revisions.
             crate::forced_revision::catch_up(&state, &mut value, base_position, &events);

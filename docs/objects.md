@@ -10,9 +10,17 @@ The type prefix keeps the local IDs of two types apart. Permanent public IDs sta
 3. Send the revision of the write reply with the next write of that object.
 
 Use `revision: 0` and omit `id` to create an object. The server makes the ID.
-The server checks the revision under the workspace write lock. A stale write fails.
+The server checks the revision under the workspace write lock. A stale write fails and names
+the address, the sent revision and the current revision.
 Each write adds a revision with the actor, time, reason and schema revision.
-Retry identical input with the same `request_id` to get the same result.
+`data.owner: "me"` names the human member who sends the save. The journal stores the member ID.
+
+After a lost reply, send `joppa_command` or `joppa_batch` again with the same `request_id` and
+the same input. The server gives the stored result with `"replayed": true` and writes nothing
+new. Other input with that `request_id` is refused.
+
+A call without `workspace` takes the workspace of a write key, of a public item ID, or the one
+workspace that the caller reads. A caller with more workspaces gets their IDs to choose from.
 
 An update (`revision` > 0) merges `data` into the current fields: a sent field replaces its
 value, `null` removes the field, and every other field stays. `clean: true` replaces `data`
@@ -100,6 +108,11 @@ that one test node. A title binds every present test node with that title.
 No criterion, no test: every test in the repository has a present test node, and a full-run record of
 `joppa_record_results` gives `"unbound": []` before a merge. See [what green means](green.md)
 for the fields, the Test-5 checklist, the tones and the rollup.
+
+`joppa_record_results` with `dry_run: true` checks the record and binds its tests, and saves
+nothing. The reply gives `tests`, `bound` and `unbound`. To run a fixed test again on the same
+commit, set `test_results.same_commit: "latest_wins"` in the schema: then the newest record of a
+commit decides the test, and a later pass replaces an earlier fail.
 
 ## Parent hash
 

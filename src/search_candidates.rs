@@ -70,13 +70,20 @@ pub(super) async fn words(
     let revisions = if all_versions {
         format!("UNION ALL
       SELECT r.workspace,r.kind,r.local_id,r.revision,false,false,ts_rank_cd(r.terms,q.terms) FROM joppa.search_revisions r,q
-      WHERE r.workspace=ANY($1) AND {r} AND r.terms @@ q.terms AND NOT {COVERED}")
+      WHERE r.workspace=ANY($1) AND {r} AND r.terms @@ q.terms AND NOT {COVERED}
+      UNION ALL
+      SELECT r.workspace,r.kind,r.local_id,r.revision,false,false,0::real FROM joppa.search_revisions r
+      WHERE r.workspace=ANY($1) AND {r} AND {} AND NOT {COVERED}", title_match("r"))
     } else {
         String::new()
     };
+    let titles = title_match("d");
     Ok(tx.query(&format!("WITH q AS (SELECT websearch_to_tsquery('simple',$2) || websearch_to_tsquery('english',$2) || websearch_to_tsquery('russian',$2) AS terms), matches AS (
       SELECT d.workspace,d.kind,d.local_id,-1 AS rev,false AS exact,false AS item,ts_rank_cd(d.terms,q.terms) AS rank FROM joppa.search_documents d,q
       WHERE d.workspace=ANY($1) AND {d} AND d.terms @@ q.terms
+      UNION ALL
+      SELECT d.workspace,d.kind,d.local_id,-1,false,false,0::real FROM joppa.search_documents d
+      WHERE d.workspace=ANY($1) AND {d} AND {titles}
       {revisions}
       UNION ALL
       SELECT d.workspace,d.kind,d.local_id,-1,true,true,0::real FROM joppa.item_ids i LEFT JOIN joppa.object_aliases a ON a.workspace=i.workspace AND a.address=i.kind||':'||i.local_id JOIN joppa.search_documents d
@@ -90,6 +97,46 @@ pub(super) async fn words(
       SELECT workspace,kind,local_id,rev,bool_or(exact),bool_or(item) FROM matches GROUP BY workspace,kind,local_id,rev
       ORDER BY bool_or(exact) DESC,max(rank) DESC,EXISTS(SELECT 1 FROM joppa.search_documents c WHERE c.workspace=matches.workspace AND c.kind=matches.kind AND c.local_id=matches.local_id) DESC,workspace,kind,local_id,rev"),
       &params(vec![&scope, &query], &bound.narrows(), bound)).await?)
+}
+
+/// A title of `alias` that holds the whole query, or one of its words with `/`, `:` or `_`,
+/// of 3 characters or more. Such a node is a candidate also when other words match nothing.
+fn title_match(alias: &str) -> String {
+    format!(
+        "char_length(trim($2))>=3 AND (strpos(lower({alias}.title),lower(trim($2)))>0 OR EXISTS(SELECT 1 FROM regexp_split_to_table(lower($2),'\\s+') t WHERE char_length(t)>=3 AND t ~ '[/:_]' AND strpos(lower({alias}.title),t)>0))"
+    )
+}
+
+/// The title of each key: the current document, else the revision.
+pub(super) async fn titles(tx: &Transaction<'_>, keys: &str) -> Result<Vec<Row>> {
+    Ok(tx.query("SELECT k.workspace,k.kind,k.id,k.rev,COALESCE(d.title,r.title,'') FROM jsonb_to_recordset($1::text::jsonb) AS k(workspace text,kind text,id text,rev int)
+      LEFT JOIN joppa.search_documents d ON k.rev<0 AND d.workspace=k.workspace AND d.kind=k.kind AND d.local_id=k.id
+      LEFT JOIN joppa.search_revisions r ON k.rev>=0 AND r.workspace=k.workspace AND r.address=k.kind||':'||k.id AND r.revision=k.rev", &[&keys]).await?)
+}
+
+/// The score that a title adds for `query`: 0.10 for the same text, 0.035 when it holds the
+/// query, 0.025 when it holds each word of 3 characters or more, or a word with `/`, `:` or
+/// `_`. Each stays below the 1.0 of an exact address or ID.
+pub(super) fn title_boost(title: &str, query: &str) -> f64 {
+    let (title, query) = (title.trim().to_lowercase(), query.trim().to_lowercase());
+    if query.chars().count() < 3 {
+        return 0.0;
+    }
+    if title == query {
+        return 0.10;
+    }
+    if title.contains(&query) {
+        return 0.035;
+    }
+    let words: Vec<&str> = query
+        .split_whitespace()
+        .filter(|w| w.chars().count() >= 3)
+        .collect();
+    let all = !words.is_empty() && words.iter().all(|w| title.contains(w));
+    let token = words
+        .iter()
+        .any(|w| w.contains(['/', ':', '_']) && title.contains(w));
+    if all || token { 0.025 } else { 0.0 }
 }
 
 /// The 100 nearest vectors by cosine distance, nearest first. The current documents can come
@@ -125,3 +172,7 @@ pub(super) async fn nearest(
       ) c ORDER BY distance,workspace,kind,local_id,rev LIMIT 100"),
       &params(vec![&scope, &PROFILE, &vector], &bound.narrows(), bound)).await?)
 }
+
+#[cfg(test)]
+#[path = "search_candidates_tests.rs"]
+mod tests;

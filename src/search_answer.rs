@@ -77,6 +77,19 @@ pub(super) async fn answer(
                 .or_default() += 1.0 / (61.0 + rank as f64);
         }
     }
+    // A title that matches the query adds a fixed score before the page (title_boost).
+    let named = rows.iter().any(|row| row.get::<_, bool>(4));
+    if !named && query.trim().chars().count() >= 3 && !scores.is_empty() {
+        let keys: Vec<Value> = scores
+            .keys()
+            .map(|(w, k, id, rev)| json!({"workspace": w, "kind": k, "id": id, "rev": rev}))
+            .collect();
+        for row in candidates::titles(&tx, &json!(keys).to_string()).await? {
+            let key: Key = (row.get(0), row.get(1), row.get(2), row.get(3));
+            let boost = candidates::title_boost(row.get(4), query);
+            scores.entry(key).and_modify(|s| *s += boost);
+        }
+    }
     // An archived object ranks below a live one of the same score.
     let mut archived = std::collections::BTreeSet::<(String, String)>::new();
     if flags.all_versions && !scores.is_empty() {

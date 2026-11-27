@@ -30,7 +30,12 @@ pub(super) async fn read_one(
             && scope.related_to.is_none(),
         "address cannot be combined with list filters"
     );
-    let row=conn.query_opt(&format!("SELECT o.kind,o.local_id,o.revision,jsonb_set(o.document,'{{data}}',{data})::text,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text,(o.document->'data')::text,COALESCE(o.computed,'{{}}'::jsonb)::text,o.parent_hash_current,o.contract_hash FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", data = crate::computed_fields::DATA_SQL), &[&workspace,&key,&prefix]).await?.with_context(|| format!("unknown object: {asked}"))?;
+    let row=conn.query_opt(&format!("SELECT o.kind,o.local_id,o.revision,jsonb_set(o.document,'{{data}}',{data})::text,(SELECT id FROM joppa.item_ids WHERE workspace=o.workspace AND kind=COALESCE(split_part(a.address,':',1),o.kind) AND local_id=COALESCE(split_part(a.address,':',2),o.local_id) AND namespace=$3),o.signal::text,o.process::text,(o.document->'data')::text,COALESCE(o.computed,'{{}}'::jsonb)::text,o.parent_hash_current,o.contract_hash FROM joppa.objects o LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address WHERE o.workspace=$1 AND o.address=$2", data = crate::computed_fields::DATA_SQL), &[&workspace,&key,&prefix]).await?;
+    let Some(row) = row else {
+        let types = conn.query("SELECT jsonb_object_keys(first_view->'object_types') FROM joppa.board_cache WHERE workspace=$1", &[&workspace]).await?;
+        let types: Vec<String> = types.iter().map(|r| r.get(0)).collect();
+        anyhow::bail!(crate::read_compact::unknown_object(asked, &types));
+    };
     let current: i32 = row.get(2);
     if scope.history {
         ensure!(

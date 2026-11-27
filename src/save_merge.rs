@@ -34,6 +34,19 @@ pub fn default_data(value: &mut Value, clean: bool) {
 
 /// Complete the input `value` of one save_object from the current object. A sent value of a
 /// computed field is refused, and the stored data keeps no computed field (computed_fields.rs).
+/// data.owner "me" of a save names the human member who sends it. The journal stores the
+/// member ID, so a replay reads no "me".
+pub fn owner_me(w: &Workspace, actor: &str, value: &mut Value) -> Result<()> {
+    if value["op"] != "save_object" || value["data"]["owner"] != "me" {
+        return Ok(());
+    }
+    if !crate::commands::is_human_member(w, actor) {
+        bail!("owner \"me\" requires a human member caller, pass a human member ID");
+    }
+    value["data"]["owner"] = serde_json::json!(actor);
+    Ok(())
+}
+
 pub fn merge(w: &Workspace, value: &mut Value, clean: bool) -> Result<()> {
     if value["op"] != "save_object" {
         return Ok(());

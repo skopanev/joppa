@@ -43,6 +43,13 @@ pub(super) async fn read(
             "parent_hash": reply["parent_hash"], "parent_hash_current": reply["parent_hash_current"],
             "parent_changed": reply["parent_changed"], "contract_hash": reply["contract_hash"]});
         if let Some(fields) = fields {
+            let named = joppa::read_compact::object_fields(&reply, None, fields);
+            let derived = fields
+                .iter()
+                .filter(|f| joppa::read_compact::DERIVED.contains(&f.as_str()));
+            for field in derived {
+                item[field.as_str()] = named[field.as_str()].clone();
+            }
             joppa::read_shapes::keep_fields(&mut item, fields);
         }
         items.push(item);

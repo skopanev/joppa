@@ -62,8 +62,9 @@ pub const OPTIONAL_FIELDS: &[(&str, &[(&str, &str)])] = &[
             ),
             (
                 "data",
-                "an update merges data by key, and null removes a field; optional on an update \
-                 without clean",
+                "a new object needs data.title and data.owner, a human member ID or \"me\" for \
+                 a human member. An update merges data by key, and null removes a field. \
+                 Optional on an update without clean",
             ),
             (
                 "relations",

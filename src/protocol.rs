@@ -17,6 +17,8 @@ mod schemas;
 mod tests;
 #[path = "protocol_tools.rs"]
 mod tools;
+#[path = "protocol_workspace.rs"]
+mod workspace;
 pub(crate) use tools::tool;
 
 /// joppa_help section writing gives the writing rules whole.
@@ -85,10 +87,13 @@ async fn call(
     embedder: Option<&joppa::embeddings::Embedder>,
 ) -> anyhow::Result<Value> {
     let a = &msg["params"]["arguments"];
-    let field = |k: &str| a[k].as_str().ok_or_else(|| anyhow::anyhow!("missing {k}"));
     let name = msg["params"]["name"].as_str().unwrap_or("");
     joppa::write_key::check_tool(name, a)?;
     schemas::check_arguments(name, a)?;
+    // A call without workspace takes the one that the caller reads.
+    let resolved = workspace::with_workspace(pool, actor, name, a).await?;
+    let a = resolved.as_ref().unwrap_or(a);
+    let field = |k: &str| a[k].as_str().ok_or_else(|| anyhow::anyhow!("missing {k}"));
     // requirement:read-contract: the compact read shape.
     if name == "joppa_objects" {
         return reads::compact(pool, actor, name, a).await;

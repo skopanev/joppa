@@ -80,7 +80,10 @@ pub(super) async fn read<'a>(
     let replies = store::read_cards(pool, workspace, actor, addresses, rc::card_needs(fields));
     let (found, missing) = replies.await?;
     if !many && let Some(key) = missing.first() {
-        anyhow::bail!("unknown object: {key}");
+        let tree = store::tree_schema(pool, workspace, actor, None).await?;
+        let types = tree["schema"]["types"].as_object().into_iter().flatten();
+        let types: Vec<String> = types.map(|(k, _)| k.clone()).collect();
+        anyhow::bail!(rc::unknown_object(key, &types));
     }
     let mut items = Vec::with_capacity(found.len());
     for (asked, reply) in found {
