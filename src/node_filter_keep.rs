@@ -104,6 +104,16 @@ pub(super) async fn by_sets(
     archived: bool,
     mut kept: Kept,
 ) -> Result<Kept> {
+    if filters
+        .any
+        .as_ref()
+        .is_some_and(|e| e.iter().any(|(_, v)| v.is_empty()))
+    {
+        return Ok(Kept {
+            set: Some(BTreeSet::new()),
+            exclude: false,
+        });
+    }
     let (keep, skip) = filters.groups();
     if !keep.is_empty() {
         let set = sets::addresses(client, workspace, archived, kept.only(), &keep, " AND ");

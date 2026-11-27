@@ -19,6 +19,10 @@ pub(super) struct SearchQuery {
     /// Refused: the ready filter was removed.
     ready: Option<String>,
     data: Option<String>,
+    blocked: Option<String>,
+    data_any: Option<String>,
+    data_all: Option<String>,
+    data_none: Option<String>,
 }
 
 pub(super) async fn search(
@@ -38,6 +42,10 @@ pub(super) async fn search(
         ("assignee", q.assignee.as_deref()),
         ("ready", q.ready.as_deref()),
         ("data", q.data.as_deref()),
+        ("blocked", q.blocked.as_deref()),
+        ("data_any", q.data_any.as_deref()),
+        ("data_all", q.data_all.as_deref()),
+        ("data_none", q.data_none.as_deref()),
     ]) {
         Ok(filter) => filter,
         Err(e) => return result(Err(e)),

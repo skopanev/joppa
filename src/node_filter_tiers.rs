@@ -30,12 +30,7 @@ pub async fn bind(
 ) -> Result<Bound> {
     let mut bound = plain(client, workspace, filter, roots, archived).await?;
     if let Some(each) = &filter.tiers {
-        let set = bound.descendants.take().map(|d| d.into_iter().collect());
-        let kept = Kept {
-            set,
-            exclude: bound.exclude,
-        };
-        let (kept, ranks) = rank(client, workspace, each, archived, kept).await?;
+        let (kept, ranks) = rank(client, workspace, each, archived, &bound).await?;
         bound.descendants = kept.set.map(|set| set.into_iter().collect());
         bound.exclude = kept.exclude;
         bound.ranks = Some(ranks);
@@ -66,28 +61,37 @@ pub fn tiers(a: &Value) -> Result<Option<Vec<NodeFilter>>> {
 
 const COUNT: &str = "tiers takes 1 to 10 filter objects";
 
-/// The nodes of `kept` that match a tier, and the tier of each node.
+/// The nodes of `outer` that match a tier, and the tier of each node.
 pub(super) async fn rank(
     client: &impl GenericClient,
     workspace: &str,
     tiers: &[NodeFilter],
     archived: bool,
-    kept: Kept,
+    outer: &Bound,
 ) -> Result<(Kept, Ranks)> {
+    let kept = Kept {
+        set: outer
+            .descendants
+            .as_ref()
+            .map(|d| d.iter().cloned().collect()),
+        exclude: outer.exclude,
+    };
     let mut ranks: BTreeMap<String, usize> = BTreeMap::new();
     let mut rest = None;
     for (i, tier) in tiers.iter().enumerate() {
         let bound = plain(client, workspace, tier, false, archived).await?;
         // A tier that keeps every node ends the tiers.
-        if !bound.narrows() {
+        if bound.keeps_all() {
             rest = Some(i);
             break;
         }
         let sql = format!(
-            "SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND (o.present OR $2) AND {}",
-            bound.clause(3)
+            "SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND (o.present OR $2) AND {} AND {}",
+            outer.clause(3),
+            bound.clause(11)
         );
         let mut params: Vec<&(dyn ToSql + Sync)> = vec![&workspace, &archived];
+        params.extend(outer.params());
         params.extend(bound.params());
         for row in client.query(&sql, &params).await? {
             ranks.entry(row.get(0)).or_insert(i);

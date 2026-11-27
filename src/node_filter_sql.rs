@@ -226,6 +226,17 @@ impl Bound {
     pub fn narrows(&self) -> bool {
         self.roots || self.descendants.is_some() || self.filter.narrows()
     }
+
+    /// True when no condition of `clause` can drop a node.
+    pub(super) fn keeps_all(&self) -> bool {
+        !self.roots
+            && self.descendants.is_none()
+            && self.filter.kinds.is_none()
+            && self.filter.statuses.is_none()
+            && self.filter.owner.is_none()
+            && self.filter.assignee.is_none()
+            && self.data.is_none()
+    }
 }
 
 static NONE: Option<String> = None;
