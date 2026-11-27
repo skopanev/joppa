@@ -153,3 +153,17 @@ fn cursor_keeps_the_snapshot() {
         assert_eq!(offset(Some(bad), 9).unwrap_err().to_string(), CURSOR);
     }
 }
+
+// ac:ow9ghazl
+#[test]
+fn tiers_apply_to_lists_and_counts_only() {
+    let tiers = json!([{"status": "red"}]);
+    for key in ["address", "relations_of", "in_relation"] {
+        let refusal = from_args(&json!({"tiers": tiers, key: "x"})).unwrap_err();
+        let text = "tiers applies only to object lists and counts";
+        assert_eq!(refusal.to_string(), text, "{key}");
+    }
+    assert!(from_args(&json!({"tiers": tiers, "count": true})).is_ok());
+    assert!(from_args(&json!({"tiers": tiers, "group_by": ["kind"]})).is_ok());
+    assert!(from_args(&json!({"tiers": tiers, "order": "age"})).is_ok());
+}

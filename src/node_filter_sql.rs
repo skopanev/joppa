@@ -7,6 +7,10 @@ use tokio_postgres::types::ToSql;
 mod envelope;
 #[path = "node_filter_keep.rs"]
 mod keep;
+#[path = "node_filter_tiers.rs"]
+mod tiers;
+pub use keep::{Kept, kept_by_sets};
+pub use tiers::{Ranks, bind, tiers};
 
 /// The filters with the descendants of the parent read from the database.
 pub struct Bound {
@@ -25,6 +29,8 @@ pub struct Bound {
     envelope: bool,
     /// The number of computed fields that the data filter names.
     computed: usize,
+    /// The tier of each node, when the filter has tiers (node_filter_tiers.rs).
+    pub ranks: Option<Ranks>,
 }
 
 /// The refusal of the archived tone in a read that keeps only present nodes.
@@ -52,9 +58,9 @@ pub const SUBTREE: &str = "WITH RECURSIVE node(address) AS (
             WHERE $3::int IS NULL OR s.depth<$3
     ) SELECT DISTINCT address FROM sub";
 
-/// Read the descendants of the parent, or the nodes within `depth` of the top. `roots` keeps
-/// only root nodes when no filter narrows the read. `archived` also walks below archived nodes.
-pub async fn bind(
+/// The bind of the filters without tiers. `roots` keeps only root nodes when no filter
+/// narrows the read. `archived` also walks below archived nodes.
+async fn plain(
     client: &impl GenericClient,
     workspace: &str,
     filter: &NodeFilter,
@@ -77,9 +83,15 @@ pub async fn bind(
             Some(rows.iter().map(|row| row.get(0)).collect())
         }
     };
-    // not_data, has_tests, comment_prefix and blocked keep a set of addresses, as a parent does.
-    let (descendants, exclude) =
-        keep::narrow(client, workspace, filter, archived, descendants).await?;
+    // not_data, has_tests, comment_prefix, the data sets and blocked keep a set of addresses,
+    // as a parent does.
+    let set = descendants.map(|d| d.into_iter().collect());
+    let start = Kept {
+        set,
+        exclude: false,
+    };
+    let kept = keep::narrow(client, workspace, filter, archived, start).await?;
+    let (descendants, exclude) = (kept.set.map(|s| s.into_iter().collect()), kept.exclude);
     let envelope::Data {
         text: data,
         key: combination,
@@ -96,6 +108,7 @@ pub async fn bind(
         combination,
         envelope,
         computed,
+        ranks: None,
     })
 }
 
@@ -112,6 +125,7 @@ impl Bound {
             combination: None,
             envelope: false,
             computed: 0,
+            ranks: None,
         }
     }
 

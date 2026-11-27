@@ -36,8 +36,9 @@ pub(super) async fn list_rows(
     } = plan;
     let filter = bound.clause_at([3, 4, 11, 12, 13, 14, 15, 16]);
     // The order of the list: the default order, or the order of the request from $19.
+    let ranks = bound.ranks.as_ref();
     let sorted =
-        super::object_list_order::sorted(conn, &workspace, scope, &selected, needs).await?;
+        super::object_list_order::sorted(conn, &workspace, scope, &selected, needs, ranks).await?;
     let order = sorted.sql.as_deref().unwrap_or(&order);
     let f = bound.params();
     // A status list with the archived tone also keeps the current archived nodes.
@@ -143,7 +144,7 @@ pub(super) async fn list_rows(
         super::dimensions::read_tones(&*conn, &workspace, key, &mut items, set).await?;
     }
     let next = more.then(|| {
-        if scope.order.is_some() {
+        if scope.ordered() {
             return crate::dependency_order::next_cursor(position, offset, limit);
         }
         let last = items.last().unwrap();

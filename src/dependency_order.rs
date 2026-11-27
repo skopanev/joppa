@@ -186,11 +186,17 @@ fn enum_values(types: &BTreeMap<String, TreeType>, field: &str) -> Option<Vec<St
 }
 
 /// The order of joppa_objects arguments. It applies only to an object list, so a read by
-/// address, an edge read, a member read and a count refuse it.
+/// address, an edge read, a member read and a count refuse it. They also refuse tiers, apart
+/// from a count.
 pub fn from_args(a: &Value) -> Result<Option<Order>> {
     let order = Order::parse(&a["order"])?;
-    let other = ["address", "relations_of", "in_relation", "group_by"];
-    let other = other.iter().any(|k| !a[*k].is_null()) || a["count"] == true;
+    let modes = ["address", "relations_of", "in_relation"];
+    let mode = modes.iter().any(|k| !a[*k].is_null());
+    ensure!(
+        a["tiers"].is_null() || !mode,
+        "tiers applies only to object lists and counts"
+    );
+    let other = mode || !a["group_by"].is_null() || a["count"] == true;
     ensure!(
         a["order"].is_null() || !other,
         "order applies only to object list reads"

@@ -79,6 +79,10 @@ pub async fn read_data(
     if let Some(wanted) = plan.blocked {
         walked.retain(|address| facts.is_blocked(address) == wanted);
     }
+    if plan.sets.is_set() {
+        let kept = crate::node_filter::kept_by_sets(&*tx, workspace, &plan.sets).await?;
+        walked.retain(|address| kept.contains(address));
+    }
     // The keys of the reply object in serde order: items, position, workspace.
     let tail = format!(
         "],\"position\":{position},\"workspace\":{}}}",

@@ -8,7 +8,7 @@ const AUTHORING_TEXT: &str = "Text fields: each value holds at most the field_ma
 /// The form of a note id, in joppa_command and joppa_batch.
 const NOTE_ID: &str = "A note id has 1 to 120 ASCII letters, digits, \"-\", \"_\" or \".\".";
 /// The text of each request_id parameter.
-const REQUEST_ID: &str = "the same value only for an identical retry";
+const REQUEST_ID: &str = "reuse only for an identical retry";
 
 /// Every tool of tools/list.
 pub(super) fn list() -> Vec<Value> {
@@ -16,7 +16,7 @@ pub(super) fn list() -> Vec<Value> {
     let mut tools = vec![
         tool(
             "joppa_list",
-            "List your workspaces: items {id, title, hidden}. hidden: true marks a workspace hidden in web.",
+            "List your workspaces: items {id, title, hidden}. hidden: true hides it in web.",
             json!({"cursor":text(CURSOR)}),
             json!([]),
         ),
@@ -28,31 +28,31 @@ pub(super) fn list() -> Vec<Value> {
         ),
         tool(
             "joppa_tree",
-            "Read the workspace schema: types, parents, roles, status rules, questions, references, typed fields, filters, relations and test_results. set_tree_schema changes it.",
+            "Read the workspace schema: types, rules, typed fields, filters, relations and test_results. set_tree_schema changes it.",
             json!({"workspace":w(),"revision":{"type":"integer","minimum":0,"description":"one schema revision"}}),
             json!([]),
         ),
         tool(
             "joppa_objects",
-            "Read objects. Without address: a page of items {address, title, status, assignee}. With address: one object with revision, parent, data, status, process, relations and relation_groups, or {items} for 2 to 100. relations_of pages edges. Replies over 256 KB are refused.",
+            "Read objects. Without address: a page of items {address, title, status, assignee}. With address: one object with revision, parent, data, status, process, relations and relation_groups, or {items} for 2 to 100. Replies over 256 KB are refused.",
             schemas::objects(),
             json!([]),
         ),
         tool(
             "joppa_record_results",
             "Record the test results of one commit. Name each test by test:<id> or its public item ID: it binds that one node. A title binds every present test node with that title. The latest record decides a test. The reply gives unbound: the tests with no present test node. unbound does not check under which criterion a test node stands. A full-run record needs unbound: [] before a merge.",
-            json!({"workspace":w(),"commit":text("lowercase git sha"),"results":{"type":"array","minItems":1,"description":"[{test, status, ...fields}]","items":{"type":"object","properties":{"test":text("test:<id>, a public item ID or a title"),"status":text("a test_results status of joppa_tree")},"required":["test","status"]}},"dry_run":{"type":"boolean","description":"true checks and binds without saving"}}),
+            json!({"workspace":w(),"commit":text("lowercase git sha"),"results":{"type":"array","minItems":1,"description":"[{test, status, ...fields}]","items":{"type":"object","properties":{"test":text("test:<id>, a public item ID or a title"),"status":text("a test_results status of joppa_tree")},"required":["test","status"]}},"dry_run":{"type":"boolean","description":"check and bind, save nothing"}}),
             json!(["results"]),
         ),
         tool(
             "joppa_history",
             "Read the History of a workspace: one entry for each change, open until a member marks it processed.",
-            json!({"workspace":w(),"limit":{"type":"integer","minimum":1,"maximum":100,"description":"1 to 100, default 25"},"cursor":text(CURSOR),"order":{"type":"string","enum":["oldest","newest"],"description":"default oldest"},"after":{"type":"integer","minimum":0,"description":"entries after this position"},"open":{"type":"boolean","description":"open entries (next_item names the oldest)"},"by_alias":text("agent alias"),"op":text("operation"),"kind":text("object type"),"target":text("object address"),"under":text("subtree address or item ID")}),
+            json!({"workspace":w(),"limit":{"type":"integer","minimum":1,"maximum":100,"description":"default 25"},"cursor":text(CURSOR),"order":{"type":"string","enum":["oldest","newest"],"description":"default oldest"},"after":{"type":"integer","minimum":0,"description":"entries after this position"},"open":{"type":"boolean","description":"only open entries"},"by_alias":text("agent alias"),"op":text("operation"),"kind":text("object type"),"target":text("object address"),"under":text("subtree address")}),
             json!([]),
         ),
         tool(
             "joppa_history_mark",
-            "Mark open History entries processed. The server sets actor and time.",
+            "Mark open History entries processed.",
             json!({"workspace":w(),"position":{"type":"integer","minimum":1,"description":"History position"},"positions":{"type":"array","description":"1 to 25 positions"},"reason":text("short reason"),"nodes":{"type":"array","maxItems":15,"items":{"type":"string"},"description":"nodes that the work changed"}}),
             json!(["reason"]),
         ),
@@ -69,12 +69,12 @@ pub(super) fn list() -> Vec<Value> {
             &format!(
                 "Append up to 100 operations atomically, by the rules of joppa_command. A later command names an earlier result as {{\"$ref\":\"label/id\"}} or {{\"$ref\":\"label/address\"}}. {NOTE_ID}"
             ),
-            json!({"workspace":w(),"request_id":text(REQUEST_ID),"defaults":{"type":"object","description":"save_object fields without op for each save_object that omits them"},"operations":{"type":"array","minItems":1,"maxItems":100,"description":"the operations in order","items":{"type":"object","properties":{"ref":text("label of this result"),"command":{"type":"object","description":"One operation object, by the rules of joppa_command.command."}},"required":["command"],"additionalProperties":false}}}),
+            json!({"workspace":w(),"request_id":text(REQUEST_ID),"defaults":{"type":"object","description":"fields for each save_object that omits them"},"operations":{"type":"array","minItems":1,"maxItems":100,"description":"the operations in order","items":{"type":"object","properties":{"ref":text("label of this result"),"command":{"type":"object","description":"One operation object, by the rules of joppa_command.command."}},"required":["command"],"additionalProperties":false}}}),
             json!(["request_id", "operations"]),
         ),
         tool(
             "joppa_help",
-            "Read the operation shapes and the rules. Without section, op or kind: the table of contents.",
+            "Read the operation shapes and the rules. Without arguments: the table of contents.",
             json!({"workspace":text("workspace key or alias, for examples"),"section":{"type":"string","enum":["operations","writing","objects","search","process","examples"],"description":"one section"},"op":text("one operation: its fields and callers"),"kind":text("the example of one type")}),
             json!([]),
         ),
@@ -85,7 +85,7 @@ pub(super) fn list() -> Vec<Value> {
 
 /// One tool. Every tool takes `alias`: initialize describes it once.
 pub(crate) fn tool(name: &str, description: &str, mut properties: Value, required: Value) -> Value {
-    properties["alias"] = text("your agent name, such as p1");
+    properties["alias"] = text("your agent name");
     json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":required,"additionalProperties":false}})
 }
 

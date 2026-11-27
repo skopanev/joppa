@@ -29,14 +29,17 @@ fn node_filters(mut schema: Value, full: bool) -> Value {
         "status": one_or_list(&format!("{TONES} (purple keeps archived nodes)")),
         "owner": text("member ID in data.owner"),
         "assignee": text("member ID or agent alias, or \"\" for no assignee"),
-        "data": {"type":"object","description":"containment filter on data, e.g. {\"stage\":\"done\"}"},
+        "data": {"type":"object","description":"data it contains, e.g. {\"stage\":\"done\"}"},
+        "data_any": {"type":"object","description":"{field or a.b: value or list}: any"},
+        "data_all": {"type":"object","description":"as data_any: all"},
+        "data_none": {"type":"object","description":"as data_any: none"},
     });
     for (name, value) in filters.as_object().into_iter().flatten() {
         // The search repeats the texts of status and assignee: they name values to send.
         schema[name] = if full || name == "status" || name == "assignee" {
             value.clone()
         } else {
-            json!({"type":value["type"],"description":"as in joppa_objects"})
+            json!({"type":value["type"],"description":"as joppa_objects"})
         };
     }
     if !full {
@@ -54,16 +57,16 @@ pub(super) fn objects() -> Value {
             "fields": {"type":"array","items":{"type":"string"},
                 "description":"on a list and on an address read: title, revision, body, status, children, relations, comments, files, child_counts, references, parent_changed, blocked, dependents or a data name"},
             "limit": {"type":"integer","minimum":1,"maximum":100,
-                "description":"items in a page: 1 to 25, or 1 to 100 with fields"},
+                "description":"1 to 25, or 1 to 100 with fields"},
             "cursor": text(CURSOR),
             "revision": {"type":"integer","minimum":1,"description":"one revision of address"},
             "history": {"type":"boolean","description":"revision headers"},
             "comments_cursor": text("next_cursor of a comment page"),
             "note_status": {"type":"string","enum":["unprocessed","processed"],"description":"Inbox state"},
-            "related_to": text("address: objects linked to it"),
+            "related_to": text("address: its linked objects"),
             "relations_of": text("address: its edges in pages"),
             "direction": {"type":"string","enum":["outgoing","incoming"],"description":"with relations_of"},
-            "relation": text("relation key of relations_of"),
+            "relation": text("with relations_of"),
             "in_relation": text("relation key: its nodes"),
             "count": {"type":"boolean","description":"true: only {total}"},
             "group_by": {"type":"array","description":"1 to 3 of kind, status, owner, assignee, <field>"},
@@ -72,6 +75,7 @@ pub(super) fn objects() -> Value {
             "comment_prefix": text("active comment ID prefix"),
             "blocked": {"type":"boolean","description":"waits on open work"},
             "order": one_or_list("dependents desc,priority,age"),
+            "tiers": {"type":"array","description":"1 to 10 filters, first match first"},
         }),
         true,
     )
@@ -83,7 +87,7 @@ pub(super) fn search() -> Value {
         json!({
             "workspace": text(WORKSPACE),
             "query": {"type":"string","minLength":1,"maxLength":2000,"description":"words or a copied public ID"},
-            "limit": {"type":"integer","minimum":1,"maximum":25,"description":"1 to 25, default 10"},
+            "limit": {"type":"integer","minimum":1,"maximum":25,"description":"default 10"},
             "cursor": text(CURSOR),
             "all_versions": {"type":"boolean","description":"also past revisions and archived objects"},
             "all_workspaces": {"type":"boolean","description":"every readable workspace"},

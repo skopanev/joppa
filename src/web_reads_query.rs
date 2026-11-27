@@ -37,6 +37,12 @@ pub(in crate::web) struct ObjectQuery {
     pub(in crate::web) blocked: Option<String>,
     /// The order of the list, as the order of joppa_objects (dependency_order.rs).
     pub(in crate::web) order: Option<String>,
+    /// JSON objects of the data set filters (node_filter_sets.rs).
+    pub(in crate::web) data_any: Option<String>,
+    pub(in crate::web) data_all: Option<String>,
+    pub(in crate::web) data_none: Option<String>,
+    /// A JSON list of 1 to 10 filter objects (node_filter_tiers.rs).
+    pub(in crate::web) tiers: Option<String>,
     /// true gives only the total of the list (src/node_counts.rs).
     pub(in crate::web) count: Option<String>,
     /// 1 to 3 comma-separated keys of the groups of the list.
@@ -55,6 +61,10 @@ impl ObjectQuery {
             ("ready", self.ready.as_deref()),
             ("data", self.data.as_deref()),
             ("blocked", self.blocked.as_deref()),
+            ("data_any", self.data_any.as_deref()),
+            ("data_all", self.data_all.as_deref()),
+            ("data_none", self.data_none.as_deref()),
+            ("tiers", self.tiers.as_deref()),
         ])
     }
     /// The names of the keys that the request sends, outside fields, limit and cursor.
@@ -77,6 +87,10 @@ impl ObjectQuery {
             ("ready", &self.ready),
             ("data", &self.data),
             ("blocked", &self.blocked),
+            ("data_any", &self.data_any),
+            ("data_all", &self.data_all),
+            ("data_none", &self.data_none),
+            ("tiers", &self.tiers),
         ];
         let mut keys: Vec<&'static str> = texts
             .into_iter()
@@ -96,7 +110,7 @@ impl ObjectQuery {
     ) -> anyhow::Result<Option<joppa::dependency_order::Order>> {
         let args = serde_json::json!({"order": self.order, "address": self.address,
             "relations_of": self.relations_of, "in_relation": self.in_relation,
-            "group_by": self.group_by, "count": self.count.is_some()});
+            "group_by": self.group_by, "count": self.count.is_some(), "tiers": self.tiers});
         joppa::dependency_order::from_args(&args)
     }
 }

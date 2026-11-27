@@ -162,6 +162,10 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `assignee` | Nodes whose `data.assignee` is this value: a member ID or an agent alias. Any node can have `data.assignee`. `""` keeps the nodes with no assignee: `data.assignee` is null, absent or `""`. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. A value of a [filter dimension](schema.md#filter-dimensions), such as `{"env": "dev"}`, keeps the nodes that apply to it and gives the tones of that value. |
 | `blocked` | `true`: the nodes that wait on unfinished work. `false`: the other nodes. See [Dependency work order](#dependency-work-order). |
+| `data_any` | Nodes whose field matches at least one value, for each key. See [Set filters and tiers](#set-filters-and-tiers). |
+| `data_all` | Nodes whose list field holds every value, for each key. |
+| `data_none` | Nodes whose field matches no value of any key. A node without the field stays. |
+| `tiers` | Nodes that match at least one of 1 to 10 filter objects. A list gives the first tier first. |
 
 ```json
 {"workspace": "w", "parent": "domain:billing", "kind": ["ac"], "status": ["red", "blue"]}
@@ -226,6 +230,39 @@ The same facts serve `joppa_objects`, the HTTP route `/objects` and `POST /api/d
 
 ```json
 {"workspace": "w", "kind": "task", "blocked": false, "order": "dependents desc,priority,age", "fields": ["title", "dependents"]}
+```
+
+## Set filters and tiers
+
+A work selector picks an urgent node anywhere in the workspace first, else a node of a domain
+queue (`ac:zk5119jk`, `ac:ow9ghazl`, `src/node_filter_sets.rs`, `src/node_filter_tiers.rs`).
+
+- `data_any`, `data_all` and `data_none` map a data field to a string or to a list of up to
+  10000 strings. A dotted key such as `delivery.state` names a nested field. The data has the
+  computed fields too.
+- A value matches a string field that is equal to it, or a list field that holds it.
+  - `data_any` keeps the nodes that match at least one value, for each key. `[]` keeps no node.
+  - `data_all` keeps the nodes whose list holds every value, for each key. `[]` keeps every node.
+  - `data_none` drops the nodes that match a value of any key. `[]` drops no node.
+- The GIN indexes of `document.data` and of the computed values find the candidates (migrations
+  039 and 055), so no field needs its own index.
+- `joppa_objects` lists, counts and groups, `joppa_search`, HTTP `/objects` and `POST /api/data`
+  (`filter.data_any`, `filter.data_all`, `filter.data_none`) take them. HTTP takes JSON text.
+- `tiers` takes a list of 1 to 10 filter objects of `joppa_objects` and HTTP `/objects` (JSON
+  text). A read keeps a node when it matches the other filters and at least one tier.
+  - A tier without `parent` reads every level, so `{}` keeps every node as the last fallback.
+  - A list gives the nodes of the first tier first, then of the next tier, and so on. In each
+    tier the list follows `order`, else the address. The cursor is `<position>:@<offset>`.
+  - `count` and `group_by` count the kept nodes.
+- Refusals: `data_any filter must be an object`, `data_any key a..b must be a field name or a
+  dotted path of field names`, `data_any.tags must be a string or a list of up to 10000 strings`,
+  `tiers takes 1 to 10 filter objects`, `each tier must be a filter object`, `tiers cannot nest
+  tiers` and `tiers applies only to object lists and counts` (with `address`, `relations_of` or
+  `in_relation`).
+
+```json
+{"workspace": "w", "kind": "task", "blocked": false, "data_none": {"tags": ["stuck", "owner-review"]},
+ "tiers": [{"status": "red"}, {"parent": "domain:billing", "depth": 100}], "order": "dependents desc,age"}
 ```
 
 ## Counts

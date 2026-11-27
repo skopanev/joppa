@@ -15,15 +15,22 @@
 //!   data has the computed fields too.
 //! - `blocked: true` keeps the nodes that wait on unfinished work, `false` the other nodes
 //!   (dependency_sql.rs).
+//! - `data_any`, `data_all` and `data_none` match data fields to sets of values
+//!   (node_filter_sets.rs). `tiers` keeps the nodes of 1 to 10 filters in order
+//!   (node_filter_tiers.rs).
 //!
 //! The same SQL clause serves every read, with the alias `o` for `joppa.objects`.
 use crate::status_colors::STATUS_TONES;
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Map, Value};
 
+#[path = "node_filter_sets.rs"]
+mod sets;
 #[path = "node_filter_sql.rs"]
 mod sql;
-pub use sql::{ASSIGNEE, Bound, SUBTREE, TONE, bind};
+pub use sets::DataSets;
+use sets::list;
+pub use sql::{ASSIGNEE, Bound, Kept, Ranks, SUBTREE, TONE, bind, kept_by_sets};
 
 /// The node filters of one read.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -46,6 +53,9 @@ pub struct NodeFilter {
     pub comment_prefix: Option<String>,
     /// True keeps the blocked nodes, false the nodes that are not blocked.
     pub blocked: Option<bool>,
+    pub sets: DataSets,
+    /// The filters of each tier, in order. A tier has no tiers.
+    pub tiers: Option<Vec<NodeFilter>>,
 }
 
 /// The names of the filters, in the order of the reply rules.
@@ -129,6 +139,8 @@ impl NodeFilter {
             has_tests: flag("has_tests")?,
             comment_prefix: text("comment_prefix")?,
             blocked: flag("blocked")?,
+            sets: DataSets::parse(a)?,
+            tiers: sql::tiers(a)?,
         })
     }
 
@@ -173,6 +185,8 @@ impl NodeFilter {
             || self.data.is_some()
             || self.keeps().is_some()
             || self.blocked.is_some()
+            || self.sets.is_set()
+            || self.tiers.is_some()
     }
 
     /// The filters that a separate read of the kept addresses applies, when one is set.
@@ -216,24 +230,6 @@ impl NodeFilter {
         self.parent = Some(parent.to_owned());
         self
     }
-}
-
-fn list(a: &Value, name: &str) -> Result<Option<Vec<String>>> {
-    let values = match a.get(name) {
-        None | Some(Value::Null) => return Ok(None),
-        Some(Value::String(s)) => vec![s.clone()],
-        Some(Value::Array(items)) => items
-            .iter()
-            .map(|v| v.as_str().map(str::to_owned))
-            .collect::<Option<Vec<_>>>()
-            .with_context(|| format!("{name} must be a string or a list of strings"))?,
-        Some(_) => bail!("{name} must be a string or a list of strings"),
-    };
-    ensure!(
-        !values.is_empty() && values.iter().all(|v| !v.is_empty() && v.len() <= 100),
-        "{name} must be a string or a list of strings"
-    );
-    Ok(Some(values))
 }
 
 #[cfg(test)]

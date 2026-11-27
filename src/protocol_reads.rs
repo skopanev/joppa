@@ -139,7 +139,8 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             .iter()
             .all(|k| a[*k].is_null())
         && !inbox
-        && order.is_none();
+        && order.is_none()
+        && filter.tiers.is_none();
     if plain {
         return store::compact_list(pool, workspace, actor, &filter, limit, a["cursor"].as_str())
             .await;

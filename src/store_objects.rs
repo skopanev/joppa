@@ -172,3 +172,10 @@ pub struct ObjectScope<'a> {
     /// The order of a list other than the address order (dependency_order.rs).
     pub order: Option<crate::dependency_order::Order>,
 }
+
+impl ObjectScope<'_> {
+    /// True when the list has an order or tiers, so it pages by an offset in one snapshot.
+    pub fn ordered(&self) -> bool {
+        self.order.is_some() || self.filter.tiers.is_some()
+    }
+}

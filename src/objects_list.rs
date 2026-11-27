@@ -61,12 +61,12 @@ pub(super) async fn read_list(
         .filter
         .one_kind()
         .is_some_and(|kind| selected.get(kind).is_some_and(|t| t.inbox.unwrap_or(false)));
-    // A list with order pages by an offset in one snapshot (dependency_order.rs).
-    let offset = match &scope.order {
-        Some(_) => crate::dependency_order::offset(scope.cursor, position)?,
-        None => 0,
+    // A list with order or tiers pages by an offset in one snapshot (dependency_order.rs).
+    let offset = match scope.ordered() {
+        true => crate::dependency_order::offset(scope.cursor, position)?,
+        false => 0,
     };
-    let inbox = inbox && scope.order.is_none();
+    let inbox = inbox && !scope.ordered();
     let (after_processed, after) = if let Some(cursor) = scope.cursor.filter(|_| offset == 0) {
         let (p, key) = cursor.split_once(':').context("invalid object cursor")?;
         // A list in address order also takes the bare address of its last item, as the
