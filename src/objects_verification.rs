@@ -64,9 +64,10 @@ pub fn archive(
     ensure!(may_edit_tree(w, actor), "workspace member required");
     commands::nonempty(reason)?;
     let old = w.objects.get(&target).context("unknown object")?;
+    let current = old.current().revision;
     ensure!(
-        old.current().revision == *revision,
-        "stale object revision; read the object again"
+        current == *revision,
+        "stale object revision on {target}: sent {revision}, current is {current}"
     );
     ensure!(
         old.current().present,

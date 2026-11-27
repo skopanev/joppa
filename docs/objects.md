@@ -109,7 +109,8 @@ that do not reset. Each source counts as its title, body and live files. A save 
 only such quiet fields keeps the old `parent_hash`.
 
 Send `fields: ["parent_hash", "parent_hash_current", "parent_changed"]` on a list or an address
-read. `parent_hash_current` is the hash of the parent now. `parent_changed` is true when the
+read. `parent_hash_current` is the hash of the parent now. `contract_hash` is the hash of the
+node itself, the value that its children compare. `parent_changed` is true when the
 node has a stamp and the two differ. A read by address without `fields` shows `parent_hash`
 and shows `parent_changed` only when it is true.
 

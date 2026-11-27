@@ -74,7 +74,19 @@ pub struct Plan {
 }
 
 /// The item keys that each type has: the stored tone, the parent and the document fields.
-pub const FIXED_FIELDS: [&str; 6] = ["title", "body", "owner", "assignee", "parent", "status"];
+pub const FIXED_FIELDS: [&str; 11] = [
+    "title",
+    "body",
+    "owner",
+    "assignee",
+    "parent",
+    "status",
+    "relations",
+    "contract_hash",
+    "parent_hash",
+    "parent_hash_current",
+    "parent_changed",
+];
 /// The default of `max_chars`.
 pub const MAX_CHARS: usize = 32768;
 /// The most items of a walk without `query`.

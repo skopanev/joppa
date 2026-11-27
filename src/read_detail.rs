@@ -2,7 +2,7 @@
 //! status, process, the comment and file counts, the relations with titled edges, incoming
 //! edge counts and remote links. `fields` gives comments, files, child counts and references.
 //! No key repeats another key or the request; `history: true` gives the revision headers.
-use crate::read_compact::{page, status, strip_empty};
+use crate::read_compact::{PAGE, page, page_of, status, strip_empty};
 use anyhow::Result;
 use serde_json::{Value, json};
 
@@ -78,7 +78,16 @@ fn counts(reply: &mut Value) {
 /// comments, the short files, the counts (also 0), the relations with titled edges, the
 /// incoming edge counts, the references, one copy of each process fact, and no empty keys
 /// outside data.
-pub fn detail_keys(mut reply: Value, asked: &str, comments_cursor: Option<&str>) -> Result<Value> {
+pub fn detail_keys(reply: Value, asked: &str, comments_cursor: Option<&str>) -> Result<Value> {
+    detail_keys_sized(reply, asked, (comments_cursor, PAGE))
+}
+
+/// `detail_keys` with comment pages of `size` entries, the `limit` of a read of one address.
+pub fn detail_keys_sized(
+    mut reply: Value,
+    asked: &str,
+    (comments_cursor, size): (Option<&str>, usize),
+) -> Result<Value> {
     counts(&mut reply);
     let comments = comment_list(&reply["annotations"]["comments"]);
     if let Some(annotations) = reply["annotations"].as_object_mut() {
@@ -106,13 +115,13 @@ pub fn detail_keys(mut reply: Value, asked: &str, comments_cursor: Option<&str>)
     reply["comments_active"] = if active.is_empty() {
         Value::Null
     } else {
-        page(active, comments_cursor)?
+        page_of(active, comments_cursor, size)?
     };
     // An object without comments has no comments key.
     reply["comments"] = if comments.is_empty() {
         Value::Null
     } else {
-        page(comments, comments_cursor)?
+        page_of(comments, comments_cursor, size)?
     };
     if let Some(status) = status(&reply) {
         reply["status"] = status;
@@ -150,6 +159,7 @@ pub fn detail(reply: Value, asked: &str, comments_cursor: Option<&str>) -> Resul
         map.retain(|key, _| !ON_REQUEST.contains(&key.as_str()));
         // The stamp shows when it exists, and parent_changed only when true (parent_hash.rs).
         map.remove("parent_hash_current");
+        map.remove("contract_hash");
     }
     drop_same(&mut reply, &["parent_changed"], &json!(false));
     drop_same(&mut reply, &["comments_count", "files_count"], &json!(0));

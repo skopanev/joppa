@@ -69,9 +69,10 @@ pub(crate) fn save_into(
         "object address is a historical alias"
     );
     let old = w.objects.get(&key).map(|o| Object::clone(o));
+    let current = old.as_ref().map_or(0, |o| o.current().revision);
     ensure!(
-        old.as_ref().map_or(0, |o| o.current().revision) == *revision,
-        "stale object revision; read the object again"
+        current == *revision,
+        "stale object revision on {key}: sent {revision}, current is {current}"
     );
     if let Some(old) = &old {
         ensure!(
@@ -231,3 +232,7 @@ pub(crate) fn save_into(
     crate::relations::validate(w, &key, &relations, &kept)?;
     Ok(true)
 }
+
+#[cfg(test)]
+#[path = "objects_saved_tests.rs"]
+mod tests;

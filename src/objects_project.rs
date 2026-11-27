@@ -104,7 +104,7 @@ pub(in crate::store) async fn project(
             } else {
                 crate::relations::stored_document(r)?
             };
-            let doc = json!({"address":address,"kind":obj.kind,"local_id":obj.id,"revision":r.revision,"parent":r.parent,"present":r.present,"title":r.data["title"],"owner":r.data["owner"],"description":if state.unloaded_objects.contains(address) {previous.unwrap()["description"].clone()} else {r.data["body"].clone()},"document_at":r.at,"inbox_status":r.data["status"].as_str().unwrap_or("unprocessed"),"document":document,"signal":signal,"process":objects::process(state,address),"parent_hash_current":objects::parent_hash_current(state,address)});
+            let doc = json!({"address":address,"kind":obj.kind,"local_id":obj.id,"revision":r.revision,"parent":r.parent,"present":r.present,"title":r.data["title"],"owner":r.data["owner"],"description":if state.unloaded_objects.contains(address) {previous.unwrap()["description"].clone()} else {r.data["body"].clone()},"document_at":r.at,"inbox_status":r.data["status"].as_str().unwrap_or("unprocessed"),"document":document,"signal":signal,"process":objects::process(state,address),"parent_hash_current":objects::parent_hash_current(state,address),"contract_hash":objects::contract_hash(state,address)});
             if previous != Some(&doc) {
                 docs.push(doc);
             }

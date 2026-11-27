@@ -9,8 +9,13 @@ use super::*;
 use sha2::{Digest, Sha256};
 
 /// The fields that a read gives and only the server writes. A save may send `parent_hash`
-/// to confirm the current parent, and refuses the other two.
-pub const PARENT_HASH_FIELDS: [&str; 3] = ["parent_hash", "parent_hash_current", "parent_changed"];
+/// to confirm the current parent, and refuses the others.
+pub const PARENT_HASH_FIELDS: [&str; 4] = [
+    "parent_hash",
+    "parent_hash_current",
+    "parent_changed",
+    "contract_hash",
+];
 
 /// The contract hash of the present object at `address`. An archived object has none, so its
 /// children read parent_changed. A compact Inbox type (store_state_cache.rs) has none, so the
@@ -178,4 +183,4 @@ pub fn source_users(state: &Workspace, changed: &mut BTreeSet<String>) {
 
 #[cfg(test)]
 #[path = "objects_parent_hash_tests.rs"]
-mod tests;
+pub(super) mod tests;

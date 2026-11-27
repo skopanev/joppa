@@ -32,7 +32,8 @@ Request: `{"workspace": "w", "address": "task:t"}`. Reply (empty keys omitted):
   read the data, else the computed value. The HTTP `/api` read keeps the computed values in
   `data`.
 - `fields: ["comments_active"]` gives a page of the comments that are not withdrawn, and
-  `["comments_latest"]` the newest 5 of them in time order.
+  `["comments_latest"]` the newest 5 of them in time order. On a read of one address, `limit`
+  (1 to 25) sizes the page of `comments` and `comments_active`.
 - `comments_count` counts the comments without the withdrawn ones, and `files_count` the
   attached files. Each shows only when it is above 0. `fields: ["comments_count"]` gives 0.
 - The detail gives no `comments`, `files`, `child_counts` or `references`. `fields` gives

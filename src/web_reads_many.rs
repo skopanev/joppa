@@ -41,7 +41,7 @@ pub(super) async fn read(
             "title": document["data"]["title"], "signal": reply["signal"],
             "item_id": reply["item_id"], "present": document["present"] != false,
             "parent_hash": reply["parent_hash"], "parent_hash_current": reply["parent_hash_current"],
-            "parent_changed": reply["parent_changed"]});
+            "parent_changed": reply["parent_changed"], "contract_hash": reply["contract_hash"]});
         if let Some(fields) = fields {
             joppa::read_shapes::keep_fields(&mut item, fields);
         }

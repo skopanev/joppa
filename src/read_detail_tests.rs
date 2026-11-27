@@ -65,3 +65,33 @@ fn a_count_of_0_shows_only_on_request() {
     let card = detail(empty, "ac:a", None).unwrap();
     assert!(card.get("comments_count").is_none() && card.get("files_count").is_none());
 }
+
+#[test]
+fn the_limit_of_a_read_of_one_address_sizes_the_comment_page() {
+    let mut reply = reply();
+    for n in 3..=5 {
+        reply["annotations"]["comments"][format!("c{n}")] =
+            json!({"actor": "bot", "at": format!("2026-01-0{n}"), "text": "z"});
+    }
+    let first = detail_keys_sized(reply.clone(), "ac:a", (None, 2)).unwrap();
+    assert_eq!(first["comments"]["items"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        (
+            &first["comments"]["total"],
+            &first["comments"]["next_cursor"]
+        ),
+        (&json!(5), &json!("2"))
+    );
+    assert_eq!(
+        first["comments_active"]["items"].as_array().unwrap().len(),
+        2
+    );
+    assert_eq!(first["comments_active"]["total"], json!(4));
+    let last = detail_keys_sized(reply, "ac:a", (Some("4"), 2)).unwrap();
+    assert_eq!(last["comments"]["items"].as_array().unwrap().len(), 1);
+    assert!(
+        last["comments"].get("next_cursor").is_none(),
+        "{}",
+        last["comments"]
+    );
+}

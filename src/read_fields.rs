@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 /// The first path segments that a list item gives itself. `status` is the status tone, and
 /// `relations` gives the stored relations of the item. A read by address gives its detail
 /// relations.
-pub const LIST_FIELDS: [&str; 22] = [
+pub const LIST_FIELDS: [&str; 23] = [
     "address",
     "data",
     "computed",
@@ -31,6 +31,7 @@ pub const LIST_FIELDS: [&str; 22] = [
     "parent_hash",
     "parent_hash_current",
     "parent_changed",
+    "contract_hash",
 ];
 
 /// The keys of a detail read that a list item does not give. `comments_count` and
@@ -152,9 +153,14 @@ pub fn check_fields(fields: &[String], known: impl Fn(&str) -> bool) -> Result<(
     Ok(())
 }
 
-/// The parent hash facts of an item (parent_hash.rs): the stamp of its revision, the current
-/// contract hash of its parent, and whether a stamp differs from it.
-pub fn parent_hash_facts(item: &mut Value, stamp: Option<String>, current: Option<String>) {
+/// The parent hash facts of an item (parent_hash.rs): its own contract hash, the stamp of its
+/// revision, the current contract hash of its parent, and whether a stamp differs from it.
+pub fn parent_hash_facts(
+    item: &mut Value,
+    contract: Option<String>,
+    (stamp, current): (Option<String>, Option<String>),
+) {
+    item["contract_hash"] = json!(contract);
     item["parent_changed"] = json!(stamp.is_some() && stamp != current);
     item["parent_hash"] = json!(stamp);
     item["parent_hash_current"] = json!(current);
@@ -207,7 +213,7 @@ pub fn object_fields(reply: &Value, detail: Option<&Value>, fields: &[String]) -
     "status": crate::read_compact::status(reply), "children": reply["children"],
     "child_counts": reply["child_counts"],
     "parent_hash": reply["parent_hash"], "parent_hash_current": reply["parent_hash_current"],
-    "parent_changed": reply["parent_changed"] == true,
+    "parent_changed": reply["parent_changed"] == true, "contract_hash": reply["contract_hash"],
     "computed": match &reply["computed"] {
         Value::Null => json!({}),
         computed => computed.clone(),

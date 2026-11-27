@@ -98,8 +98,14 @@ pub(crate) fn admit(operations: &[BatchOperation], batch: bool) -> Result<()> {
     Ok(())
 }
 
-/// Field validation of one command after generated fields, before state checks.
+/// Field validation of one command after generated fields, before state checks. A save sends
+/// its title and body in data, so a top-level title or body names the place.
 pub(crate) fn fields(value: &Value) -> Result<()> {
+    let outside = ["title", "body"].iter().any(|k| value.get(*k).is_some());
+    ensure!(
+        value["op"] != "save_object" || !outside,
+        "put title and body inside data"
+    );
     serde_json::from_value::<Command>(value.clone())?;
     Ok(())
 }

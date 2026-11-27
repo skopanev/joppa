@@ -13,7 +13,18 @@ const ROOT: &str = "WITH k AS (SELECT CASE WHEN strpos($2,':')>0 THEN $2 ELSE
         AND o.address=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=k.key),k.key)";
 
 /// The item fields that are columns, not data fields.
-const COLUMNS: [&str; 5] = ["title", "body", "owner", "parent", "status"];
+const COLUMNS: [&str; 10] = [
+    "title",
+    "body",
+    "owner",
+    "parent",
+    "status",
+    "relations",
+    "contract_hash",
+    "parent_hash",
+    "parent_hash_current",
+    "parent_changed",
+];
 
 /// The reply of a read key of `workspace`, as JSON text. A large workspace has tens of
 /// thousands of live nodes, so the walk streams light rows (address, type, ID, parent and the
@@ -129,18 +140,21 @@ impl Reply {
             .filter(|f| !COLUMNS.contains(&f.as_str()))
             .collect();
         let body = fields.iter().any(|f| f == "body");
+        let relations = fields.iter().any(|f| f == "relations");
         let sql = format!(
             "SELECT o.address,o.kind,o.revision,
                 COALESCE((SELECT target FROM joppa.object_aliases a WHERE a.workspace=o.workspace AND a.address=o.parent),o.parent),
                 o.title,CASE WHEN $4::bool THEN o.description END,o.owner,{TONE},
-                CASE WHEN cardinality($3::text[])>0 THEN (SELECT jsonb_object_agg(key,value) FROM jsonb_each({DATA_SQL}) WHERE key=ANY($3))::text END
+                CASE WHEN cardinality($3::text[])>0 THEN (SELECT jsonb_object_agg(key,value) FROM jsonb_each({DATA_SQL}) WHERE key=ANY($3))::text END,
+                CASE WHEN $5::bool THEN jsonb_build_object('relations',o.document->'relations','links',o.document->'links')::text END,
+                o.contract_hash,o.document->>'parent_hash',o.parent_hash_current
             FROM unnest($2::text[]) WITH ORDINALITY s(address,ord)
             JOIN joppa.objects o ON o.workspace=$1 AND o.address=s.address AND o.present
             ORDER BY s.ord",
             DATA_SQL = crate::computed_fields::DATA_SQL
         );
-        let params: [&(dyn tokio_postgres::types::ToSql + Sync); 4] =
-            [&workspace, &selected, &data, &body];
+        let params: [&(dyn tokio_postgres::types::ToSql + Sync); 5] =
+            [&workspace, &selected, &data, &body, &relations];
         let rows = client.query_raw(&sql, params).await?;
         futures_util::pin_mut!(rows);
         while let Some(r) = futures_util::TryStreamExt::try_next(&mut rows).await? {
@@ -197,30 +211,6 @@ async fn walk_nodes(
     Ok(out)
 }
 
-/// One item: the address, the type, the revision and each requested field that is not null.
-fn item(r: &tokio_postgres::Row, fields: &[String]) -> Result<Value> {
-    let mut item = json!({
-        "address": r.get::<_, String>(0),
-        "kind": r.get::<_, String>(1),
-        "revision": r.get::<_, i32>(2),
-    });
-    let data: Option<&str> = r.get(8);
-    let data: Value = data
-        .map(serde_json::from_str)
-        .transpose()?
-        .unwrap_or_default();
-    for field in fields {
-        let value = match field.as_str() {
-            "title" => json!(r.get::<_, String>(4)),
-            "body" => json!(r.get::<_, Option<String>>(5)),
-            "owner" => json!(r.get::<_, Option<String>>(6)),
-            "parent" => json!(r.get::<_, Option<String>>(3)),
-            "status" => json!(r.get::<_, Option<String>>(7)),
-            other => data.get(other).cloned().unwrap_or_default(),
-        };
-        if !value.is_null() {
-            item[field] = value;
-        }
-    }
-    Ok(item)
-}
+#[path = "store_data_item.rs"]
+mod data_item;
+use data_item::item;

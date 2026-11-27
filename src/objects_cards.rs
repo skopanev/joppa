@@ -94,7 +94,7 @@ pub async fn read_cards(
     let sql = format!(
         "SELECT o.address,o.kind,o.local_id,o.revision,{document}::text,o.signal::text,o.process::text,o.rollup::text,{tests},{kind},
             CASE WHEN $3 THEN (o.document->'data')::text END,COALESCE(o.computed,'{{}}'::jsonb)::text,
-            o.document->>'parent_hash',o.parent_hash_current
+            o.document->>'parent_hash',o.parent_hash_current,o.contract_hash
         FROM unnest($2::text[]) WITH ORDINALITY k(asked,n)
         LEFT JOIN joppa.object_aliases a ON a.workspace=$1 AND a.address=k.asked
         LEFT JOIN joppa.objects o ON o.workspace=$1 AND o.address=COALESCE(a.target,k.asked)
@@ -136,7 +136,8 @@ pub async fn read_cards(
         // The data stays as its authors wrote it, and the computed values come apart.
         authors.push(parse(10, Value::Null)?);
         item["computed"] = strip_nulls(parse(11, json!({}))?);
-        crate::read_compact::parent_hash_facts(&mut item, row.get(12), row.get(13));
+        let facts = (row.get(12), row.get(13));
+        crate::read_compact::parent_hash_facts(&mut item, row.get(14), facts);
         items.push(item);
     }
     let known = facts::Known {

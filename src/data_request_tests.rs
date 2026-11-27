@@ -125,3 +125,19 @@ fn a_read_key_is_the_prefix_and_64_lowercase_hex_characters() {
     assert!(!is_read_key(&format!("jpa_{hex}")));
     assert!(!is_read_key("abc"));
 }
+
+#[test]
+fn fields_take_the_relations_and_the_hash_facts_but_a_filter_refuses_them() {
+    let names = [
+        "relations",
+        "contract_hash",
+        "parent_hash",
+        "parent_hash_current",
+        "parent_changed",
+    ];
+    let p = plan(json!({"fields": names})).unwrap();
+    assert_eq!(p.fields, names.map(String::from).to_vec());
+    for name in names {
+        assert_eq!(status(json!({"filter": {name: "x"}})), 400, "{name}");
+    }
+}

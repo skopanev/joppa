@@ -3,11 +3,11 @@
 use super::*;
 use crate::commands::{Command, apply, apply_inner, unchanged_save};
 
-const AT: &str = "2026-11-25T10:00:00Z";
+pub(crate) const AT: &str = "2026-11-25T10:00:00Z";
 
 /// bob creates W with the migrations of a new workspace (store_ensure_notes.rs), then domain d
 /// and capability c under d at positions 102 and 103.
-fn workspace() -> Workspace {
+pub(crate) fn workspace() -> Workspace {
     let mut w = Workspace::default();
     apply_inner(
         &mut w,
@@ -57,7 +57,13 @@ fn workspace() -> Workspace {
     w
 }
 
-fn save(kind: &str, id: &str, parent: Option<&str>, revision: u32, data: Value) -> Command {
+pub(crate) fn save(
+    kind: &str,
+    id: &str,
+    parent: Option<&str>,
+    revision: u32,
+    data: Value,
+) -> Command {
     serde_json::from_value(json!({"op": "save_object", "kind": kind, "id": id,
         "parent": parent, "revision": revision, "data": data, "reason": "r"}))
     .unwrap()

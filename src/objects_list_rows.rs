@@ -58,7 +58,7 @@ pub(super) async fn list_rows(
             (SELECT count(*) FROM joppa.objects c WHERE c.workspace=o.workspace AND c.parent=o.address AND c.present),
             CASE WHEN $10::boolean THEN (o.document->'relations')::text END,
             o.document->'data'->>'assignee',COALESCE(o.computed,'{{}}'::jsonb)::text,
-            o.document->>'parent_hash',o.parent_hash_current
+            o.document->>'parent_hash',o.parent_hash_current,o.contract_hash
         FROM (SELECT o.*,count(*) OVER() AS total FROM joppa.objects o
         WHERE o.workspace=$1 AND (o.present OR $17)
             AND {filter}
@@ -111,7 +111,7 @@ pub(super) async fn list_rows(
         item["children"] = json!(row.get::<_, i64>(16));
         // The computed values, apart from the data, for `fields: ["computed"]`.
         item["computed"] = super::cards::strip_nulls(serde_json::from_str(row.get(19))?);
-        crate::read_compact::parent_hash_facts(item, row.get(20), row.get(21));
+        crate::read_compact::parent_hash_facts(item, row.get(22), (row.get(20), row.get(21)));
         // Who holds the work: a member ID or an agent alias.
         if let Some(assignee) = row.get::<_, Option<String>>(18).filter(|a| !a.is_empty()) {
             item["assignee"] = json!(assignee);

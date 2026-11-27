@@ -101,9 +101,8 @@ fn command_schema() -> Value {
             "revision":{"description":"the revision you read; 0 creates"},
             "relations":{"type":"object","description":"save_object: key -> {edges: [{to}]}; null removes a key"},
             "clean":{"type":"boolean","description":"true replaces data whole"},
-            "data":{"type":"object","description":"data.owner: the member ID of a human owner, required on every save"},
-            "title":{"description":"one statement, at most 128 characters"},
-            "body":rules(), "text":rules(), "reason":rules(), "value":rules()
+            "data":{"type":"object","description":"save_object: title, body, owner and typed fields. data.owner is the member ID of a human owner, required on every save"},
+            "text":rules(), "reason":rules(), "value":rules()
         }
     })
 }

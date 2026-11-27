@@ -78,7 +78,7 @@ pub async fn status_projection_loop(pool: Pool) {
     }
 }
 
-/// Fill parent_hash_current of each object (parent_hash.rs) in the workspaces with an older
+/// Fill parent_hash_current and contract_hash of each object (parent_hash.rs) in the workspaces with an older
 /// version, one workspace in each transaction, in parts of PART rows.
 pub async fn catch_up_parent_hashes(pool: &Pool) -> Result<usize> {
     let mut conn = pool.get().await?;
@@ -92,9 +92,9 @@ pub async fn catch_up_parent_hashes(pool: &Pool) -> Result<usize> {
         for part in keys.chunks(super::stream::PART) {
             let values: Vec<Value> = part
                 .iter()
-                .map(|a| json!({"address": a, "hash": crate::objects::parent_hash_current(&state, a)}))
+                .map(|a| json!({"address": a, "hash": crate::objects::parent_hash_current(&state, a), "own": crate::objects::contract_hash(&state, a)}))
                 .collect();
-            tx.execute("UPDATE joppa.objects o SET parent_hash_current=x.hash FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,hash text) WHERE o.workspace=$1 AND o.address=x.address AND o.parent_hash_current IS DISTINCT FROM x.hash", &[&id, &json!(values).to_string()]).await?;
+            tx.execute("UPDATE joppa.objects o SET parent_hash_current=x.hash,contract_hash=x.own FROM jsonb_to_recordset($2::text::jsonb) AS x(address text,hash text,own text) WHERE o.workspace=$1 AND o.address=x.address AND (o.parent_hash_current IS DISTINCT FROM x.hash OR o.contract_hash IS DISTINCT FROM x.own)", &[&id, &json!(values).to_string()]).await?;
         }
         tx.execute("UPDATE joppa.board_cache SET first_view=first_view||jsonb_build_object('parent_hash_version',$2::text) WHERE workspace=$1", &[&id, &PARENT_HASH_VERSION]).await?;
         tx.commit().await?;

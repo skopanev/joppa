@@ -39,6 +39,11 @@ pub(super) async fn read<'a>(
     let (history, revision) = (a["history"] == true, a["revision"].as_u64());
     let many = addresses.len() > 1;
     let cursor = a["comments_cursor"].as_str();
+    // `limit` sizes the comment page of a read of one address.
+    let size = match many {
+        true => rc::PAGE,
+        false => crate::protocol::pages::limit(a, rc::PAGE)?,
+    };
     ensure!(
         !many || !(history || revision.is_some() || cursor.is_some()),
         "history, revision and comments_cursor read one address"
@@ -51,7 +56,9 @@ pub(super) async fn read<'a>(
         let asked = addresses[0];
         let reply = store::read_objects(pool, workspace, actor, &scope(Some(asked))).await?;
         return match fields {
-            Some(fields) => named(pool, workspace, actor, reply, asked, fields, cursor).await,
+            Some(fields) => {
+                named(pool, workspace, actor, reply, asked, fields, (cursor, size)).await
+            }
             None if history => history_page(reply, asked, a["cursor"].as_str()),
             None => Ok(rc::revision(reply, asked)),
         };
@@ -82,7 +89,7 @@ pub(super) async fn read<'a>(
         let mut item = match fields {
             Some(fields) => {
                 let detail = match fields.iter().any(|f| detail_key(f)) {
-                    true => Some(rc::detail_keys(reply.clone(), asked, cursor)?),
+                    true => Some(rc::detail_keys_sized(reply.clone(), asked, (cursor, size))?),
                     false => None,
                 };
                 rc::object_fields(&reply, detail.as_ref(), fields)
@@ -115,7 +122,7 @@ async fn named(
     mut reply: Value,
     asked: &str,
     fields: &[String],
-    comments_cursor: Option<&str>,
+    comments: (Option<&str>, usize),
 ) -> anyhow::Result<Value> {
     let data = &reply["document"]["data"];
     super::check(fields, true, &[data])?;
@@ -124,7 +131,7 @@ async fn named(
         reply["inbox"] = json!(inbox);
     }
     let detail = match fields.iter().any(|f| detail_key(f)) {
-        true => Some(rc::detail_keys(reply.clone(), asked, comments_cursor)?),
+        true => Some(rc::detail_keys_sized(reply.clone(), asked, comments)?),
         false => None,
     };
     // The number of present children is the total of their list.

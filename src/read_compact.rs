@@ -6,7 +6,9 @@
 use anyhow::Result;
 use serde_json::{Map, Value, json};
 
-pub use crate::read_detail::{detail, detail_keys, headers, list_detail, revision};
+pub use crate::read_detail::{
+    detail, detail_keys, detail_keys_sized, headers, list_detail, revision,
+};
 #[path = "read_fields.rs"]
 mod fields;
 pub use fields::{
@@ -85,6 +87,11 @@ pub fn list(mut reply: Value, fields: Option<&[String]>) -> Value {
 
 /// One page of `entries` from the offset in `cursor`: items, next_cursor and total.
 pub fn page(entries: Vec<Value>, cursor: Option<&str>) -> Result<Value> {
+    page_of(entries, cursor, PAGE)
+}
+
+/// `page` with `size` entries in a page, such as the `limit` of a comment page.
+pub fn page_of(entries: Vec<Value>, cursor: Option<&str>, size: usize) -> Result<Value> {
     let start = match cursor {
         Some(c) => c
             .parse::<usize>()
@@ -92,10 +99,10 @@ pub fn page(entries: Vec<Value>, cursor: Option<&str>) -> Result<Value> {
         None => 0,
     };
     let total = entries.len();
-    let items: Vec<Value> = entries.into_iter().skip(start).take(PAGE).collect();
+    let items: Vec<Value> = entries.into_iter().skip(start).take(size).collect();
     let mut out = json!({"items": items, "total": total});
-    if start + PAGE < total {
-        out["next_cursor"] = json!((start + PAGE).to_string());
+    if start + size < total {
+        out["next_cursor"] = json!((start + size).to_string());
     }
     Ok(out)
 }

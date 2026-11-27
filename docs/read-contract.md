@@ -45,7 +45,7 @@ MCP reads have one shape. There is no `verbose` switch.
 | `joppa_objects` with `relations_of` | clamped to 25 | `next_cursor` and `total` |
 | `joppa_objects` with `in_relation` | clamped to 25 | `next_cursor` and `total` |
 | `joppa_objects` with `history: true` | fixed pages of 25 | `next_cursor` and `total` |
-| `joppa_objects` comments (`fields: ["comments"]`) | fixed pages of 25 | `comments_cursor` |
+| `joppa_objects` comments (`fields: ["comments"]`) | 25, or `limit` 1 to 25 on a read of one address | `comments_cursor` |
 | `joppa_attachments` | without `limit` all files, else 1 to 100 | `next_cursor` |
 | `joppa_history` | clamped to 25, default 25 | `next_cursor` and `total` |
 | `joppa_search` | clamped to 25, default 10 | `next_cursor` and `total` |

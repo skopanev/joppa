@@ -245,7 +245,7 @@ The body is a JSON object. Each key is optional, and an unknown key gets 400:
 - `kind`: a type name or a list of type names of the schema. It selects the types of `items` and does not stop the walk.
 - `filter`: an object of field names and wanted values. A field is a typed field of the schema, `owner` or `assignee`. A value is one value or a non-empty list, of the JSON type of the field.
 - `query`: 1 to 2000 characters. The hybrid search ranks only the nodes of the walk.
-- `fields`: a non-empty list of `title`, `body`, `owner`, `assignee`, `parent`, `status` and the typed fields of the schema. The default is `["title", "body"]`.
+- `fields`: a non-empty list of `title`, `body`, `owner`, `assignee`, `parent`, `status`, `relations`, `contract_hash`, `parent_hash`, `parent_hash_current`, `parent_changed` and the typed fields of the schema. The default is `["title", "body"]`. `relations` gives the stored relations, also `{}`. `parent_changed` gives `true` or `false`.
 - `limit`: 1 to 25 with `query`, and the default is 10. Without `query` it is 1 to 1000, and without a value the reply has each node of the walk.
 - `max_chars`: 1 to 262144, and the default is 32768.
 
