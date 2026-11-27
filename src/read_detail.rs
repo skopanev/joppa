@@ -161,7 +161,8 @@ pub fn detail(reply: Value, asked: &str, comments_cursor: Option<&str>) -> Resul
         map.remove("parent_hash_current");
         map.remove("contract_hash");
     }
-    drop_same(&mut reply, &["parent_changed"], &json!(false));
+    drop_same(&mut reply, &["parent_changed", "blocked"], &json!(false));
+    drop_same(&mut reply, &["dependents"], &json!(0));
     drop_same(&mut reply, &["comments_count", "files_count"], &json!(0));
     Ok(reply)
 }

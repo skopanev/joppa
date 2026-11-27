@@ -161,6 +161,7 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 | `owner` | Nodes whose `data.owner` is this member ID. |
 | `assignee` | Nodes whose `data.assignee` is this value: a member ID or an agent alias. Any node can have `data.assignee`. `""` keeps the nodes with no assignee: `data.assignee` is null, absent or `""`. |
 | `data` | Nodes whose `document.data` contains this JSON object, as the JSONB operator `@>`. A value of a [filter dimension](schema.md#filter-dimensions), such as `{"env": "dev"}`, keeps the nodes that apply to it and gives the tones of that value. |
+| `blocked` | `true`: the nodes that wait on unfinished work. `false`: the other nodes. See [Dependency work order](#dependency-work-order). |
 
 ```json
 {"workspace": "w", "parent": "domain:billing", "kind": ["ac"], "status": ["red", "blue"]}
@@ -186,6 +187,46 @@ take the same filters (`src/node_filter.rs`). All filters must match.
 - Indexes serve `owner`, `assignee`, the tone and `data` (migrations 039, 045 and 046).
 - With `address` the filters are refused: `address cannot be combined with list filters`.
 - A read with `work_filter` is refused: `work_filter was removed; use the node filters, for example kind and assignee`.
+
+## Dependency work order
+
+A work selector picks the open nodes that are not blocked and that unblock the most work
+(`requirement:w17jbz70`, `src/dependency_sql.rs`, `src/dependency_order.rs`).
+The same facts serve `joppa_objects`, the HTTP route `/objects` and `POST /api/data`.
+
+- A `depends_on` target is satisfied in these cases:
+  - The target is missing.
+  - The target is archived and its type has the status rule `none` or no status rule.
+  - The data of the target, with the computed values, contains the `done` rule of its type.
+  - The type of the target has a status rule other than `none` and the target is green.
+- `done` of a type in `set_tree_schema` is a non-empty object of data values, such as
+  `{"stage": "done"}`. A typed field must accept its value. `depends_on`, `relations`,
+  `links`, the process fields and null values are refused.
+- `blocked` is `true` when a target of the node or of a present ancestor is not satisfied.
+- `dependents` counts the present open nodes that wait on the node through a chain of
+  `depends_on` edges. `A -> B -> C` gives `C` 2, `B` 1 and `A` 0. A satisfied or archived
+  node has 0 and stops a chain.
+- `fields: ["blocked", "dependents"]` gives `false` and `0` too, on a list, on a read by
+  address and on `POST /api/data`. A card without `fields` gives `blocked` only when `true`
+  and `dependents` only when above 0. A plain list item stays `{address, title, status, assignee}`.
+- `order` takes a text with clauses separated by commas, or a list of 1 to 4 clauses. Each
+  clause is a key with `asc` (the default) or `desc`:
+  - `dependents`, `blocked`, `address`, `revision`, `title`.
+  - `age` or `created`: the journal position of the first revision, oldest first with `asc`.
+  - `status`: red, orange, yellow, blue, green. `priority` or `data.priority`: the order of
+    `schema.priorities`, by default `p0`, `p1`, `p2`.
+  - Any data field `<field>` or `data.<field>`, also a computed field. An enum field with the
+    same values in each type sorts in the order of its values. Other numbers sort as numbers,
+    other values as text.
+- An absent value sorts last in both directions. `address` breaks each tie.
+- A list with `order` gives the cursor `<position>:@<offset>`. A cursor of an older snapshot
+  is refused: `object list changed, start again without cursor`.
+- `order` with `address`, `relations_of`, `in_relation`, `count` or `group_by` is refused:
+  `order applies only to object list reads`.
+
+```json
+{"workspace": "w", "kind": "task", "blocked": false, "order": "dependents desc,priority,age", "fields": ["title", "dependents"]}
+```
 
 ## Counts
 

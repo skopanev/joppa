@@ -6,6 +6,8 @@
 use super::*;
 
 pub const REASON: &str = "Item IDs start with a slug of the workspace title";
+/// The reason of the short workspace ID of a workspace with a UUID key.
+pub const ID_REASON: &str = "A workspace with a UUID key gets a short ID from its title";
 
 /// Lowercase Latin letters and digits, with one hyphen between words, at most 40 bytes.
 /// A title without Latin letters or digits gives an empty slug.
@@ -49,6 +51,36 @@ pub(super) async fn wanted(
         }
         let taken: bool = client.query_one("SELECT EXISTS(SELECT 1 FROM joppa.board_cache WHERE workspace<>$1 AND COALESCE(state->>'reference_prefix',workspace)=$2)
             OR EXISTS(SELECT 1 FROM joppa.item_ids WHERE workspace<>$1 AND namespace=$2) OR EXISTS(SELECT 1 FROM joppa.workspaces WHERE id=$2 AND id<>$1)", &[&workspace, &candidate]).await?.get(0);
+        if !taken {
+            return Ok(Some(candidate));
+        }
+    }
+    Ok(None)
+}
+
+/// The short workspace ID of a workspace with a UUID key and no ID: the slug of its title, or
+/// the slug with -2, -3 and so on when another workspace has that name. A workspace with an ID
+/// keeps it, also after a new title.
+pub(super) async fn wanted_id(
+    client: &impl GenericClient,
+    workspace: &str,
+    state: &Workspace,
+) -> Result<Option<String>> {
+    // The key has the hyphenated form, as the startup check of store_setup.rs reads it.
+    let uuid = workspace.len() == 36 && uuid::Uuid::parse_str(workspace).is_ok();
+    if state.workspace_id.is_some() || !uuid {
+        return Ok(None);
+    }
+    let base = slug(&state.title);
+    if base.is_empty() {
+        return Ok(None);
+    }
+    for n in 1..1000 {
+        let candidate = match n {
+            1 => base.clone(),
+            n => format!("{base}-{n}"),
+        };
+        let taken: bool = client.query_one("SELECT EXISTS(SELECT 1 FROM joppa.workspace_aliases WHERE name=$1 AND workspace<>$2) OR EXISTS(SELECT 1 FROM joppa.workspaces WHERE id=$1 AND id<>$2)", &[&candidate, &workspace]).await?.get(0);
         if !taken {
             return Ok(Some(candidate));
         }

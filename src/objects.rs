@@ -88,3 +88,6 @@ pub use parent_hash::*;
 #[path = "objects_saved_data.rs"]
 mod saved_data;
 pub(crate) use saved_data::*;
+#[path = "objects_done_rule.rs"]
+mod done_rule;
+use done_rule::check_done_rule;

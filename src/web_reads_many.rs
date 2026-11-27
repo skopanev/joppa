@@ -41,7 +41,8 @@ pub(super) async fn read(
             "title": document["data"]["title"], "signal": reply["signal"],
             "item_id": reply["item_id"], "present": document["present"] != false,
             "parent_hash": reply["parent_hash"], "parent_hash_current": reply["parent_hash_current"],
-            "parent_changed": reply["parent_changed"], "contract_hash": reply["contract_hash"]});
+            "parent_changed": reply["parent_changed"], "contract_hash": reply["contract_hash"],
+            "blocked": reply["blocked"], "dependents": reply["dependents"]});
         if let Some(fields) = fields {
             let named = joppa::read_compact::object_fields(&reply, None, fields);
             let derived = fields

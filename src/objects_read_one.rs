@@ -147,6 +147,9 @@ pub(super) async fn read_one(
         // references above read the computed values too.
         item["document"]["data"] = serde_json::from_str(row.get(7))?;
         item["computed"] = super::cards::strip_nulls(serde_json::from_str(row.get(8))?);
+        // Whether the node waits on unfinished work and how many nodes wait on it.
+        let facts = crate::dependency_sql::facts(&*conn, &workspace, true).await?;
+        facts.decorate(std::slice::from_mut(&mut item));
     } else {
         // An older revision has no computed values.
         item["computed"] = json!({});

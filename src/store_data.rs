@@ -13,7 +13,7 @@ const ROOT: &str = "WITH k AS (SELECT CASE WHEN strpos($2,':')>0 THEN $2 ELSE
         AND o.address=COALESCE((SELECT target FROM joppa.object_aliases WHERE workspace=$1 AND address=k.key),k.key)";
 
 /// The item fields that are columns, not data fields.
-const COLUMNS: [&str; 10] = [
+const COLUMNS: [&str; 12] = [
     "title",
     "body",
     "owner",
@@ -24,6 +24,8 @@ const COLUMNS: [&str; 10] = [
     "parent_hash",
     "parent_hash_current",
     "parent_changed",
+    "blocked",
+    "dependents",
 ];
 
 /// The reply of a read key of `workspace`, as JSON text. A large workspace has tens of
@@ -66,8 +68,17 @@ pub async fn read_data(
     let filter: Vec<&String> = plan.filter.iter().map(|(field, _)| field).collect();
     let nodes = walk_nodes(&tx, workspace, root.as_deref(), &filter).await?;
     let tree = Tree::new(&w, &schema.types, nodes);
-    let walked = tree.walk(root.as_deref(), &plan.filter, plan.kinds.as_ref());
+    let mut walked = tree.walk(root.as_deref(), &plan.filter, plan.kinds.as_ref());
     drop(tree);
+    // The blocked filter and the fields blocked and dependents read the dependency facts.
+    let named = |f: &String| f == "blocked" || f == "dependents";
+    let facts = match plan.blocked.is_some() || plan.fields.iter().any(named) {
+        true => crate::dependency_sql::facts(&*tx, workspace, false).await?,
+        false => Default::default(),
+    };
+    if let Some(wanted) = plan.blocked {
+        walked.retain(|address| facts.is_blocked(address) == wanted);
+    }
     // The keys of the reply object in serde order: items, position, workspace.
     let tail = format!(
         "],\"position\":{position},\"workspace\":{}}}",
@@ -79,6 +90,7 @@ pub async fn read_data(
         length: start.chars().count() + tail.chars().count(),
         first: true,
         max: plan.max_chars,
+        facts,
     };
     match &plan.query {
         None => {
@@ -124,6 +136,7 @@ struct Reply {
     length: usize,
     first: bool,
     max: usize,
+    facts: crate::dependency_sql::Facts,
 }
 
 impl Reply {
@@ -158,7 +171,7 @@ impl Reply {
         let rows = client.query_raw(&sql, params).await?;
         futures_util::pin_mut!(rows);
         while let Some(r) = futures_util::TryStreamExt::try_next(&mut rows).await? {
-            let part = serde_json::to_string(&item(&r, fields)?)?;
+            let part = serde_json::to_string(&item(&r, fields, &self.facts)?)?;
             self.length += part.chars().count() + usize::from(!self.first);
             if self.length <= self.max {
                 if !self.first {

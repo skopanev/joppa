@@ -5,11 +5,15 @@ use tokio_postgres::GenericClient;
 use tokio_postgres::types::ToSql;
 #[path = "node_filter_envelope.rs"]
 mod envelope;
+#[path = "node_filter_keep.rs"]
+mod keep;
 
 /// The filters with the descendants of the parent read from the database.
 pub struct Bound {
     workspace: String,
     descendants: Option<Vec<String>>,
+    /// True when the read drops `descendants` instead of keeping them.
+    exclude: bool,
     roots: bool,
     filter: NodeFilter,
     /// The data parameter: the data filter, or with a dimension value or a computed field the
@@ -73,28 +77,9 @@ pub async fn bind(
             Some(rows.iter().map(|row| row.get(0)).collect())
         }
     };
-    // not_data, has_tests and comment_prefix keep a set of addresses, as a parent does.
-    let descendants = match filter.keeps() {
-        None => descendants,
-        Some((not_data, has_tests, prefix)) => {
-            let kept: std::collections::BTreeSet<String> = client
-                .query(
-                    KEEPS.as_str(),
-                    &[&workspace, &archived, not_data, has_tests, prefix],
-                )
-                .await?
-                .iter()
-                .map(|row| row.get(0))
-                .collect();
-            Some(match descendants {
-                Some(below) => below
-                    .into_iter()
-                    .filter(|a: &String| kept.contains(a))
-                    .collect(),
-                None => kept.into_iter().collect(),
-            })
-        }
-    };
+    // not_data, has_tests, comment_prefix and blocked keep a set of addresses, as a parent does.
+    let (descendants, exclude) =
+        keep::narrow(client, workspace, filter, archived, descendants).await?;
     let envelope::Data {
         text: data,
         key: combination,
@@ -104,6 +89,7 @@ pub async fn bind(
     Ok(Bound {
         workspace: workspace.to_owned(),
         descendants,
+        exclude,
         roots: roots && filter.parent.is_none() && !filter.narrows(),
         filter: filter.clone(),
         data,
@@ -119,6 +105,7 @@ impl Bound {
         Bound {
             workspace: workspace.to_owned(),
             descendants: Some(addresses),
+            exclude: false,
             roots: false,
             filter: NodeFilter::default(),
             data: None,
@@ -143,7 +130,10 @@ impl Bound {
         let set = [
             (
                 self.descendants.is_some(),
-                format!("o.workspace={w} AND o.address=ANY({d}::text[])"),
+                match self.exclude {
+                    true => format!("o.workspace={w} AND NOT o.address=ANY({d}::text[])"),
+                    false => format!("o.workspace={w} AND o.address=ANY({d}::text[])"),
+                },
                 format!("{w}::text IS NULL AND {d}::text[] IS NULL"),
             ),
             (
@@ -225,14 +215,6 @@ impl Bound {
 }
 
 static NONE: Option<String> = None;
-
-/// The addresses that not_data ($3), has_tests ($4) and comment_prefix ($5) keep.
-static KEEPS: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    format!("SELECT o.address FROM joppa.objects o WHERE o.workspace=$1 AND (o.present OR $2)
-        AND ($3::text IS NULL OR NOT ({} @> $3::text::jsonb))
-        AND ($4::boolean IS NULL OR $4=EXISTS(SELECT 1 FROM joppa.objects t WHERE t.workspace=o.workspace AND t.parent=o.address AND t.present AND t.kind IN (SELECT k.key FROM joppa.board_cache b CROSS JOIN LATERAL jsonb_each(b.first_view->'object_types') k WHERE b.workspace=o.workspace AND k.value->>'role'='test')))
-        AND ($5::text IS NULL OR EXISTS(SELECT 1 FROM joppa.state_entries n CROSS JOIN LATERAL jsonb_each(n.value->'comments') c WHERE n.workspace=o.workspace AND n.section='notes' AND n.key=o.address AND left(c.key,length($5))=$5 AND NOT COALESCE((c.value->>'withdrawn')::boolean,false)))", crate::computed_fields::DATA_SQL)
-});
 
 /// The stored tone of a node, as each list item gives it.
 pub const TONE: &str = "COALESCE(o.rollup->'signal'->>'tone',o.signal->>'tone')";

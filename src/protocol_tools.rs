@@ -28,7 +28,7 @@ pub(super) fn list() -> Vec<Value> {
         ),
         tool(
             "joppa_tree",
-            "Read the workspace schema: types, parents, roles, status rules, questions, references, typed fields, filters, relations and test_results. set_tree_schema changes it: put_types, remove_types, put_relations and remove_relations.",
+            "Read the workspace schema: types, parents, roles, status rules, questions, references, typed fields, filters, relations and test_results. set_tree_schema changes it.",
             json!({"workspace":w(),"revision":{"type":"integer","minimum":0,"description":"one schema revision"}}),
             json!([]),
         ),

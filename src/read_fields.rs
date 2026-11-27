@@ -8,7 +8,7 @@ use serde_json::{Map, Value, json};
 /// The first path segments that a list item gives itself. `status` is the status tone, and
 /// `relations` gives the stored relations of the item. A read by address gives its detail
 /// relations.
-pub const LIST_FIELDS: [&str; 26] = [
+pub const LIST_FIELDS: [&str; 28] = [
     "address",
     "data",
     "computed",
@@ -35,6 +35,8 @@ pub const LIST_FIELDS: [&str; 26] = [
     "excerpt",
     "data_keys",
     "status_label",
+    "blocked",
+    "dependents",
 ];
 
 /// The keys of a detail read that a list item does not give. `comments_count` and
@@ -110,6 +112,7 @@ pub fn card_needs(fields: Option<&[String]>) -> CardNeeds {
             "children" => needs.children = true,
             "result" => needs.result = true,
             "note_status" => needs.inbox = true,
+            "blocked" | "dependents" => needs.dependency = true,
             // A bare name reads its data field.
             head if !LIST_FIELDS.contains(&head) && !DETAIL_FIELDS.contains(&head) => {
                 needs.document = true
@@ -128,11 +131,15 @@ pub fn list_needs(fields: Option<&[String]>) -> CardNeeds {
         .filter(|f| LIST_DETAIL_FIELDS.contains(&head(f)))
         .cloned()
         .collect();
-    if wanted.is_empty() {
-        CardNeeds::default()
-    } else {
-        card_needs(Some(&wanted))
-    }
+    let mut needs = match wanted.is_empty() {
+        true => CardNeeds::default(),
+        false => card_needs(Some(&wanted)),
+    };
+    let names = fields.into_iter().flatten().map(|f| head(f));
+    needs.dependency = names
+        .into_iter()
+        .any(|f| f == "blocked" || f == "dependents");
+    needs
 }
 
 /// Refuse the first path with an older text field or with a detail key that `known` does not
@@ -208,6 +215,7 @@ pub fn object_fields(reply: &Value, detail: Option<&Value>, fields: &[String]) -
     "child_counts": reply["child_counts"],
     "parent_hash": reply["parent_hash"], "parent_hash_current": reply["parent_hash_current"],
     "parent_changed": reply["parent_changed"] == true, "contract_hash": reply["contract_hash"],
+    "blocked": reply["blocked"] == true, "dependents": reply["dependents"].as_i64().unwrap_or(0),
     "computed": match &reply["computed"] {
         Value::Null => json!({}),
         computed => computed.clone(),

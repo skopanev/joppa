@@ -3,7 +3,12 @@
 use super::*;
 
 /// One item: the address, the type, the revision and each requested field that is not null.
-pub(super) fn item(r: &tokio_postgres::Row, fields: &[String]) -> Result<Value> {
+pub(super) fn item(
+    r: &tokio_postgres::Row,
+    fields: &[String],
+    facts: &crate::dependency_sql::Facts,
+) -> Result<Value> {
+    let address: String = r.get(0);
     let mut item = json!({
         "address": r.get::<_, String>(0),
         "kind": r.get::<_, String>(1),
@@ -29,6 +34,8 @@ pub(super) fn item(r: &tokio_postgres::Row, fields: &[String]) -> Result<Value> 
                 let stamp: Option<String> = r.get(11);
                 json!(stamp.is_some() && stamp != r.get::<_, Option<String>>(12))
             }
+            "blocked" => json!(facts.is_blocked(&address)),
+            "dependents" => json!(facts.count(&address)),
             other => data.get(other).cloned().unwrap_or_default(),
         };
         if !value.is_null() {

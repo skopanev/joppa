@@ -34,6 +34,8 @@ pub struct CardNeeds {
     pub result: bool,
     /// `inbox: true` on an object of an Inbox type.
     pub inbox: bool,
+    /// `blocked` and `dependents` (dependency_sql.rs).
+    pub dependency: bool,
 }
 
 impl CardNeeds {
@@ -49,6 +51,7 @@ impl CardNeeds {
         children: false,
         result: true,
         inbox: false,
+        dependency: true,
     };
 }
 
@@ -145,6 +148,10 @@ pub async fn read_cards(
         types: &types,
     };
     facts::add(&conn, &workspace, actor, &mut items, known, needs).await?;
+    if needs.dependency {
+        let facts = crate::dependency_sql::facts(&*conn, &workspace, true).await?;
+        facts.decorate(&mut items);
+    }
     // A computed reference reads the computed values, so the data parts only after the facts.
     for (item, data) in items.iter_mut().zip(authors) {
         if !data.is_null() {

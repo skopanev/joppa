@@ -61,6 +61,10 @@ pub struct TreeType {
     /// rule is unset and the node is orange; with status_required the type is refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// The data values that make a node of this type satisfy a `depends_on` edge, with the
+    /// computed values too (dependency_sql.rs). Without a value only the status rule decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done: Option<serde_json::Map<String, Value>>,
     /// The removed list of process fields. Only an older set_tree_schema in the journal has
     /// it: the replay accepts it and nothing reads it. A live write refuses it, no read shows it.
     #[serde(default, skip_serializing)]

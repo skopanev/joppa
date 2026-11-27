@@ -69,6 +69,7 @@ pub fn set_schema(
         for (field, rule) in &t.fields {
             crate::field_types::validate_rule(field, rule)?;
         }
+        check_done_rule(t)?;
         ensure!(
             t.color.as_deref().is_none_or(|color| color.len() == 7
                 && color.starts_with('#')

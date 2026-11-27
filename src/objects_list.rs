@@ -14,6 +14,8 @@ pub(super) struct ListPlan<'s> {
     /// The relation key of a member read (src/relation_members.rs).
     pub(super) in_relation: Option<&'s str>,
     pub(super) needs: CardNeeds,
+    /// The offset of the page of a list with order.
+    pub(super) offset: usize,
 }
 
 // The body moved from read_objects unchanged, so it keeps `&*conn` on a borrowed transaction.
@@ -59,7 +61,13 @@ pub(super) async fn read_list(
         .filter
         .one_kind()
         .is_some_and(|kind| selected.get(kind).is_some_and(|t| t.inbox.unwrap_or(false)));
-    let (after_processed, after) = if let Some(cursor) = scope.cursor {
+    // A list with order pages by an offset in one snapshot (dependency_order.rs).
+    let offset = match &scope.order {
+        Some(_) => crate::dependency_order::offset(scope.cursor, position)?,
+        None => 0,
+    };
+    let inbox = inbox && scope.order.is_none();
+    let (after_processed, after) = if let Some(cursor) = scope.cursor.filter(|_| offset == 0) {
         let (p, key) = cursor.split_once(':').context("invalid object cursor")?;
         // A list in address order also takes the bare address of its last item, as the
         // compact MCP list gives it. That cursor stays valid across writes.
@@ -135,6 +143,7 @@ pub(super) async fn read_list(
         order,
         in_relation,
         needs,
+        offset,
     };
     super::object_list_rows::list_rows(
         conn, workspace, public, position, prefix, selected, scope, plan,

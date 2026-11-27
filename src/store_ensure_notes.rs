@@ -10,6 +10,7 @@ pub(super) async fn ensure_notes(
 ) -> Result<bool> {
     let mut changed = false;
     let prefix = workspace_prefix::wanted(client, workspace, state).await?;
+    let id = workspace_prefix::wanted_id(client, workspace, state).await?;
     for (needed, command) in [
         (!state.notes_migrated, Command::MigrateNotes {}),
         (!state.tasks_migrated, Command::MigrateTasks {}),
@@ -43,6 +44,14 @@ pub(super) async fn ensure_notes(
                 ..Default::default()
             }),
         ),
+        (
+            id.is_some(),
+            Command::UpdateWorkspace(crate::commands::UpdateWorkspaceOp {
+                reason: Some(workspace_prefix::ID_REASON.into()),
+                workspace_id: id.clone(),
+                ..Default::default()
+            }),
+        ),
     ] {
         if !needed {
             continue;
@@ -53,6 +62,14 @@ pub(super) async fn ensure_notes(
             .map_or(base_position + 1, |event| event.position + 1);
         // The creator while it is a human member, else the first human member.
         let actor = commands::system_actor(state).to_owned();
+        // The short workspace ID resolves to the workspace, as an update_workspace of a member does.
+        if let Command::UpdateWorkspace(crate::commands::UpdateWorkspaceOp {
+            workspace_id: Some(name),
+            ..
+        }) = &command
+        {
+            reserve_name(client, name, workspace).await?;
+        }
         let payload = serde_json::to_string(&command)?;
         let recorded_at: String = client.query_one("INSERT INTO joppa.events(workspace,position,actor,request_id,command) VALUES($1,$2,$3,$4,$5::text::jsonb) RETURNING recorded_at::text", &[&workspace,&(position as i64),&actor,&uuid::Uuid::new_v4().to_string(),&payload]).await?.get(0);
         // A server migration has no alias, also after a replay that ends with one.

@@ -4,7 +4,10 @@ use super::*;
 mod counts;
 #[path = "web_reads_many.rs"]
 mod many;
+#[path = "web_reads_query.rs"]
+mod query;
 pub(super) use many::history;
+pub(super) use query::ObjectQuery;
 
 pub(super) async fn read(
     State(app): State<App>,
@@ -29,85 +32,6 @@ pub(super) async fn board(
     let actor = authenticate(&app, &headers).await?;
     result(store::board_read(&app.pool, &workspace, &actor).await)
 }
-#[derive(Deserialize)]
-pub(super) struct ObjectQuery {
-    address: Option<String>,
-    parent: Option<String>,
-    kind: Option<String>,
-    revision: Option<u32>,
-    history: Option<bool>,
-    limit: Option<usize>,
-    cursor: Option<String>,
-    note_status: Option<String>,
-    related_to: Option<String>,
-    /// Refused: work_filter was removed.
-    work_filter: Option<String>,
-    /// Refused: links_of was removed.
-    links_of: Option<String>,
-    /// The address whose edges to read in pages of 25, with optional direction, relation
-    /// and kind.
-    relations_of: Option<String>,
-    direction: Option<String>,
-    relation: Option<String>,
-    /// The relation key whose members to read in pages of 25 (src/relation_members.rs).
-    in_relation: Option<String>,
-    /// Comma-separated keys to keep in each list item; the address always stays.
-    fields: Option<String>,
-    depth: Option<String>,
-    status: Option<String>,
-    owner: Option<String>,
-    assignee: Option<String>,
-    /// Refused: the ready filter was removed.
-    ready: Option<String>,
-    data: Option<String>,
-    /// true gives only the total of the list (src/node_counts.rs).
-    count: Option<String>,
-    /// 1 to 3 comma-separated keys of the groups of the list.
-    group_by: Option<String>,
-}
-impl ObjectQuery {
-    /// The node filters, in the same form as joppa_objects.
-    fn filter(&self) -> anyhow::Result<joppa::node_filter::NodeFilter> {
-        joppa::node_filter::NodeFilter::parse_query(&[
-            ("parent", self.parent.as_deref()),
-            ("depth", self.depth.as_deref()),
-            ("kind", self.kind.as_deref()),
-            ("status", self.status.as_deref()),
-            ("owner", self.owner.as_deref()),
-            ("assignee", self.assignee.as_deref()),
-            ("ready", self.ready.as_deref()),
-            ("data", self.data.as_deref()),
-        ])
-    }
-    /// The names of the keys that the request sends, outside fields, limit and cursor.
-    fn other_keys(&self) -> Vec<&'static str> {
-        let texts = [
-            ("address", &self.address),
-            ("parent", &self.parent),
-            ("kind", &self.kind),
-            ("note_status", &self.note_status),
-            ("related_to", &self.related_to),
-            ("work_filter", &self.work_filter),
-            ("links_of", &self.links_of),
-            ("relations_of", &self.relations_of),
-            ("direction", &self.direction),
-            ("relation", &self.relation),
-            ("depth", &self.depth),
-            ("status", &self.status),
-            ("owner", &self.owner),
-            ("assignee", &self.assignee),
-            ("ready", &self.ready),
-            ("data", &self.data),
-        ];
-        let mut keys: Vec<&'static str> = texts
-            .into_iter()
-            .filter_map(|(key, value)| value.is_some().then_some(key))
-            .collect();
-        keys.extend(self.revision.map(|_| "revision"));
-        keys.extend(self.history.map(|_| "history"));
-        keys
-    }
-}
 pub(super) async fn objects(
     State(app): State<App>,
     Path(workspace): Path<String>,
@@ -115,6 +39,10 @@ pub(super) async fn objects(
     headers: HeaderMap,
 ) -> ApiResult {
     let actor = authenticate(&app, &headers).await?;
+    let order = match q.list_order() {
+        Ok(order) => order,
+        Err(e) => return result(Err(e)),
+    };
     if q.links_of.is_some() {
         return result(Err(anyhow::anyhow!(joppa::removed_ops::LINKS_OF)));
     }
@@ -180,8 +108,13 @@ pub(super) async fn objects(
         Ok(filter) => filter,
         Err(e) => return result(Err(e)),
     };
+    // A list with the fields blocked or dependents reads the dependency facts.
+    let dependency = store::CardNeeds {
+        dependency: joppa::read_compact::list_needs(fields.as_deref()).dependency,
+        ..Default::default()
+    };
     result(
-        store::read_objects(
+        store::read_objects_with(
             &app.pool,
             &workspace,
             &actor,
@@ -195,7 +128,9 @@ pub(super) async fn objects(
                 note_status: q.note_status.as_deref(),
                 related_to: q.related_to.as_deref(),
                 data,
+                order,
             },
+            dependency,
         )
         .await
         .map(|reply| derived_one(reply, q.address.is_some(), fields.as_deref()))

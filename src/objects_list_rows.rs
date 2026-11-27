@@ -32,8 +32,13 @@ pub(super) async fn list_rows(
         order,
         in_relation,
         needs,
+        offset,
     } = plan;
     let filter = bound.clause_at([3, 4, 11, 12, 13, 14, 15, 16]);
+    // The order of the list: the default order, or the order of the request from $19.
+    let sorted =
+        super::object_list_order::sorted(conn, &workspace, scope, &selected, needs).await?;
+    let order = sorted.sql.as_deref().unwrap_or(&order);
     let f = bound.params();
     // A status list with the archived tone also keeps the current archived nodes.
     let archived = scope.filter.archived();
@@ -67,35 +72,38 @@ pub(super) async fn list_rows(
             AND ({member})) o
         LEFT JOIN joppa.object_aliases a ON a.workspace=o.workspace AND a.target=o.address
         WHERE {after_filter}
-        ORDER BY {order} LIMIT $5
+        ORDER BY {order} LIMIT $5 OFFSET {offset}
     "#,
         data = crate::computed_fields::DATA_SQL
     );
-    let rows = conn
-        .query(
-            &query,
-            &[
-                &workspace,
-                &after,
-                f[0],
-                f[1],
-                &((limit + 1) as i64),
-                &prefix,
-                &scope.note_status,
-                &related_to,
-                &after_processed,
-                &scope.data,
-                f[2],
-                f[3],
-                f[4],
-                f[5],
-                f[6],
-                f[7],
-                &archived,
-                &in_relation,
-            ],
-        )
-        .await?;
+    let page = (limit + 1) as i64;
+    let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = vec![
+        &workspace,
+        &after,
+        f[0],
+        f[1],
+        &page,
+        &prefix,
+        &scope.note_status,
+        &related_to,
+        &after_processed,
+        &scope.data,
+        f[2],
+        f[3],
+        f[4],
+        f[5],
+        f[6],
+        f[7],
+        &archived,
+        &in_relation,
+    ];
+    params.extend(
+        sorted
+            .params
+            .iter()
+            .map(|p| p.as_ref() as &(dyn tokio_postgres::types::ToSql + Sync)),
+    );
+    let rows = conn.query(&query, &params).await?;
     // `total` counts every matching object, also the objects before the cursor.
     let total: i64 = rows.first().map_or(0, |r| r.get(15));
     let more = rows.len() > limit;
@@ -121,6 +129,9 @@ pub(super) async fn list_rows(
             item["relations"] = serde_json::from_str::<Value>(&relations)?;
         }
     }
+    if let Some(facts) = &sorted.facts {
+        facts.decorate(&mut items);
+    }
     // The decoration comes from the status projection of the last write.
     apply_rollups(&*conn, &workspace, &mut items).await?;
     if needs.notes || needs.counts || needs.references {
@@ -132,6 +143,9 @@ pub(super) async fn list_rows(
         super::dimensions::read_tones(&*conn, &workspace, key, &mut items, set).await?;
     }
     let next = more.then(|| {
+        if scope.order.is_some() {
+            return crate::dependency_order::next_cursor(position, offset, limit);
+        }
         let last = items.last().unwrap();
         let address = last["address"].as_str().unwrap();
         if inbox {

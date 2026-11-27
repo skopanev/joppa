@@ -75,6 +75,8 @@ fn number(a: &Value, key: &str) -> anyhow::Result<Option<u64>> {
 
 async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     let workspace = a["workspace"].as_str().context("missing workspace")?;
+    // The order of a list (dependency_order.rs). Any other read refuses it.
+    let order = joppa::dependency_order::from_args(a)?;
     // count and group_by count the nodes of the list (src/node_counts.rs).
     let sent = a.as_object().into_iter().flatten();
     let sent = sent.filter(|(_, v)| !v.is_null()).map(|(k, _)| k.as_str());
@@ -98,7 +100,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     anyhow::ensure!(a["links_of"].is_null(), joppa::removed_ops::LINKS_OF);
     if let Some(key) = a.get("in_relation").filter(|v| !v.is_null()) {
         let key = key.as_str().context("in_relation must be a string")?;
-        return members(pool, workspace, actor, a, key, fields).await;
+        return members::read(pool, workspace, actor, a, key, fields).await;
     }
     if let Some(address) = a["relations_of"].as_str() {
         if let Some(fields) = &fields {
@@ -136,7 +138,8 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         && ["related_to", "note_status"]
             .iter()
             .all(|k| a[*k].is_null())
-        && !inbox;
+        && !inbox
+        && order.is_none();
     if plain {
         return store::compact_list(pool, workspace, actor, &filter, limit, a["cursor"].as_str())
             .await;
@@ -153,6 +156,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
         note_status: a["note_status"].as_str(),
         related_to: a["related_to"].as_str(),
         data: fields.as_deref().is_some_and(rc::needs_data),
+        order: order.clone(),
     };
     if let Some(addresses) = address::addresses(&a["address"])? {
         return address::read(
@@ -175,6 +179,7 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
             .as_str()
             .and_then(|c| c.split_once(':'))
         && p.parse::<i64>().is_ok()
+        && !address.starts_with('@')
     {
         reply["next_cursor"] = json!(address);
     }
@@ -186,40 +191,10 @@ async fn objects(pool: &Pool, actor: &str, a: &Value) -> anyhow::Result<Value> {
     Ok(rc::list(reply, fields.as_deref()))
 }
 
-/// The member read of one relation (src/relation_members.rs), in pages of 25.
-async fn members(
-    pool: &Pool,
-    workspace: &str,
-    actor: &str,
-    a: &Value,
-    key: &str,
-    fields: Option<Vec<String>>,
-) -> anyhow::Result<Value> {
-    let sent = a.as_object().into_iter().flatten();
-    let sent = sent.filter(|(_, v)| !v.is_null()).map(|(k, _)| k.as_str());
-    joppa::relation_members::check_keys(sent)?;
-    let limit = joppa::relation_members::page(number(a, "limit")?.map(|n| n as usize));
-    let data = fields.as_deref().is_some_and(rc::needs_data);
-    let needs = rc::list_needs(fields.as_deref());
-    let cursor = a["cursor"].as_str();
-    // Each relations.<key> of fields names a relation of the registry (ac:ig3uv35d).
-    let keys = joppa::relation_members::relation_keys(fields.as_deref().unwrap_or_default());
-    let page = (limit, cursor, data, needs, keys.as_slice());
-    let reply = store::relation_members_with(pool, workspace, actor, key, page).await?;
-    if let Some(fields) = &fields {
-        let items = reply["items"].as_array().into_iter().flatten();
-        let data: Vec<&Value> = items.map(|item| &item["data"]).collect();
-        check(fields, false, &data)?;
-    }
-    let mut reply = rc::list(reply, fields.as_deref());
-    if let Some(items) = reply["items"].as_array_mut() {
-        items.iter_mut().for_each(joppa::relation_members::nest);
-    }
-    Ok(reply)
-}
-
 #[path = "protocol_reads_address.rs"]
 mod address;
+#[path = "protocol_reads_members.rs"]
+mod members;
 
 /// Refuse an older text field, and a detail key on a list read that no returned document holds.
 /// A read by address (`detail`) takes the detail keys. Each other bare name reads its data field.

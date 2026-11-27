@@ -12,6 +12,8 @@ pub mod consumer_migration;
 pub mod data_request;
 pub mod data_walk;
 pub mod decision_migration;
+pub mod dependency_order;
+pub mod dependency_sql;
 pub mod digest_hex;
 pub mod embeddings;
 pub mod embeddings_limit;

@@ -24,6 +24,8 @@ mod link_groups;
 pub use link_groups::link_page;
 #[path = "objects_list.rs"]
 mod object_list;
+#[path = "objects_list_order.rs"]
+mod object_list_order;
 #[path = "objects_list_rows.rs"]
 mod object_list_rows;
 #[path = "objects_tones.rs"]
@@ -167,4 +169,6 @@ pub struct ObjectScope<'a> {
     pub related_to: Option<&'a str>,
     /// Each list item also gives the full `document.data`.
     pub data: bool,
+    /// The order of a list other than the address order (dependency_order.rs).
+    pub order: Option<crate::dependency_order::Order>,
 }

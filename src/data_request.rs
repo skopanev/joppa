@@ -67,6 +67,8 @@ pub struct Plan {
     pub kinds: Option<BTreeSet<String>>,
     /// Each filter field with its wanted values.
     pub filter: Vec<(String, Vec<Value>)>,
+    /// True keeps the blocked nodes, false the other nodes (dependency_sql.rs).
+    pub blocked: Option<bool>,
     pub query: Option<String>,
     pub fields: Vec<String>,
     pub limit: Option<usize>,
@@ -74,7 +76,7 @@ pub struct Plan {
 }
 
 /// The item keys that each type has: the stored tone, the parent and the document fields.
-pub const FIXED_FIELDS: [&str; 11] = [
+pub const FIXED_FIELDS: [&str; 13] = [
     "title",
     "body",
     "owner",
@@ -86,6 +88,8 @@ pub const FIXED_FIELDS: [&str; 11] = [
     "parent_hash",
     "parent_hash_current",
     "parent_changed",
+    "blocked",
+    "dependents",
 ];
 /// The default of `max_chars`.
 pub const MAX_CHARS: usize = 32768;
@@ -103,8 +107,16 @@ impl Request {
             None | Some(Value::Null) => None,
             Some(kind) => Some(kinds(kind, types)?),
         };
-        let mut filter = vec![];
+        let (mut filter, mut blocked) = (vec![], None);
         for (field, wanted) in self.filter.unwrap_or_default() {
+            if field == "blocked" {
+                blocked = Some(
+                    wanted
+                        .as_bool()
+                        .ok_or_else(|| bad("filter blocked is true or false"))?,
+                );
+                continue;
+            }
             let rules = match declared.get(&field) {
                 Some(rules) => rules.clone(),
                 None if ["owner", "assignee"].contains(&field.as_str()) => ["text".into()].into(),
@@ -147,6 +159,7 @@ impl Request {
             root: self.root,
             kinds,
             filter,
+            blocked,
             query,
             fields,
             limit,

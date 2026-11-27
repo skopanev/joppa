@@ -13,6 +13,8 @@
 //!   `assignee: ""` keeps the unassigned nodes: data.assignee is null, absent or "".
 //! - `data` is a JSON object that the data of the node contains, as the JSONB operator `@>`. The
 //!   data has the computed fields too.
+//! - `blocked: true` keeps the nodes that wait on unfinished work, `false` the other nodes
+//!   (dependency_sql.rs).
 //!
 //! The same SQL clause serves every read, with the alias `o` for `joppa.objects`.
 use crate::status_colors::STATUS_TONES;
@@ -42,6 +44,8 @@ pub struct NodeFilter {
     pub has_tests: Option<bool>,
     /// Keeps the nodes with a comment that is not withdrawn and whose ID starts with this text.
     pub comment_prefix: Option<String>,
+    /// True keeps the blocked nodes, false the nodes that are not blocked.
+    pub blocked: Option<bool>,
 }
 
 /// The names of the filters, in the order of the reply rules.
@@ -105,11 +109,13 @@ impl NodeFilter {
             }
         };
         let data = object("data")?;
-        let has_tests = match a.get("has_tests") {
-            None | Some(Value::Null) => None,
-            Some(Value::Bool(flag)) => Some(*flag),
-            Some(Value::String(s)) if s == "true" || s == "false" => Some(s == "true"),
-            Some(_) => bail!("has_tests must be true or false"),
+        let flag = |name: &str| -> Result<Option<bool>> {
+            match a.get(name) {
+                None | Some(Value::Null) => Ok(None),
+                Some(Value::Bool(flag)) => Ok(Some(*flag)),
+                Some(Value::String(s)) if s == "true" || s == "false" => Ok(Some(s == "true")),
+                Some(_) => bail!("{name} must be true or false"),
+            }
         };
         Ok(Self {
             parent,
@@ -120,8 +126,9 @@ impl NodeFilter {
             assignee,
             data,
             not_data: object("not_data")?,
-            has_tests,
+            has_tests: flag("has_tests")?,
             comment_prefix: text("comment_prefix")?,
+            blocked: flag("blocked")?,
         })
     }
 
@@ -165,6 +172,7 @@ impl NodeFilter {
             || self.assignee.is_some()
             || self.data.is_some()
             || self.keeps().is_some()
+            || self.blocked.is_some()
     }
 
     /// The filters that a separate read of the kept addresses applies, when one is set.
