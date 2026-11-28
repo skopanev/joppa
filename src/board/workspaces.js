@@ -35,13 +35,15 @@ export async function list() {
     if(!list.some(w=>w.id===id)){const o=E('option',state.data?.state?.title||id);o.value=id;$('workspaces').append(o);}
     $('workspaces').disabled=$('workspaces').options.length<=1;
     $('workspaces').value=state.ws=id;
+    $('settings-link').href='/settings?workspace='+encodeURIComponent(id);
+    try{sessionStorage.setItem('joppa-workspace',id);sessionStorage.setItem('joppa-workspace-title',state.data?.state?.title||id);}catch{}
     return;
   }
   if (!list.some(w => w.id === state.ws)) state.ws = list.find(w=>w.id===sessionStorage.getItem('joppa-workspace'))?.id || list[0]?.id || '';
   $('workspaces').value = state.ws;
   // Back to the first entry returns to the workspace that the list chose for it.
   if(state.ws&&!requested)history.replaceState({...history.state,workspace:state.ws},'',location.href);
-  try{sessionStorage.setItem('joppa-workspace-title',list.find(w=>w.id===state.ws)?.title||'');}catch{}
+  try{if(state.ws)sessionStorage.setItem('joppa-workspace',state.ws);sessionStorage.setItem('joppa-workspace-title',list.find(w=>w.id===state.ws)?.title||'');}catch{}
   if (state.ws) await load();
   else {state.data=null;$('tree').replaceChildren(E('h1','No workspace access'),E('p','Ask a member of the workspace to grant access.'));}
 }

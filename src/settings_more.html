@@ -112,12 +112,18 @@ const load=async selected=>{
     send('/api/access','GET',undefined,'Could not load the people of your workspaces.').then(v=>v.items,e=>e),account]);
   workspaces=all;access=people instanceof Error?[]:people;me=person;
   select.replaceChildren(...workspaces.map(w=>new Option(w.title,w.id)));
-  if(workspaces.some(w=>w.id===selected))select.value=selected;
+  const saved=(()=>{try{return sessionStorage.getItem('joppa-workspace');}catch{return null;}})();
+  const pick=[selected,saved].find(id=>id&&workspaces.some(w=>w.id===id));
+  if(pick)select.value=pick;
   select.disabled=!workspaces.length;
   $('workspace-error').textContent=people instanceof Error?people.message:'';
   show();
 };
-select.onchange=show;
+select.onchange=()=>{
+  try{sessionStorage.setItem('joppa-workspace',select.value);}catch{}
+  history.replaceState(null,'',select.value?'/settings?workspace='+encodeURIComponent(select.value):'/settings');
+  show();
+};
 // The checkbox hides the selected workspace only from the lists of the signed-in member. The
 // request is keepalive, so it ends also when the member leaves the page at once. While it runs,
 // the checkbox and the select stay locked, so its answer belongs to the selected workspace.
@@ -167,7 +173,7 @@ const changeRole=async(target,choice)=>{
 };
 // The header shows no name of the signed-in person, only Sign out.
 $('logout').onclick=async()=>{busy($('logout'),true);await fetch('/auth/logout',{method:'POST'});location.assign('/');};
-load(sessionStorage.getItem('joppa-workspace')).catch(e=>{$('workspace-error').textContent=e.message;});
+load(new URLSearchParams(location.search).get('workspace')).catch(e=>{$('workspace-error').textContent=e.message;});
 // One field adds an email or a whole domain: a value with "@" is an email, any other value is a domain.
 $('grant-access').onsubmit=async event=>{
   event.preventDefault();

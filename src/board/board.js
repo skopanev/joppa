@@ -30,6 +30,7 @@ export async function load() {
   viewSelect.onchange=()=>{location.href=viewHref(viewSelect.value);};
   $('tree-schema-link').href='/tree?workspace='+encodeURIComponent(state.ws);
   $('suggested-method-link').href='/guide?workspace='+encodeURIComponent(state.ws);
+  $('settings-link').href=state.ws?'/settings?workspace='+encodeURIComponent(state.ws):'/settings';
   await renderObjectTree();
 }
 function viewHref(name){

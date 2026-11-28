@@ -199,7 +199,7 @@ test('m78flwn8: a Read-only member sees only Hide and New workspace in Settings'
     await page.locator('#create-open').click();
     await page.locator('#workspace-title').fill('Mine');
     await Promise.all([
-      page.waitForURL(u => u.searchParams.has('workspace')),
+      page.waitForURL(u => u.pathname === '/' && u.searchParams.has('workspace')),
       page.locator('#create-workspace-button').click(),
     ]);
     mineId = new URL(page.url()).searchParams.get('workspace');
